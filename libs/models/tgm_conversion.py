@@ -17,6 +17,7 @@ __all__ = [
     "angle_axis_to_rotation_matrix",
     "rotation_matrix_to_angle_axis",
     "rotation_matrix_to_quaternion",
+    "rotation_matrix_to_rotation_6d"
     "quaternion_to_angle_axis",
     "angle_axis_to_quaternion",
     "rtvec_to_pose",
@@ -31,6 +32,24 @@ __all__ = [
 """Constant with number pi
 """
 pi = torch.Tensor([3.14159265358979323846])
+
+def rotation_matrix_to_rotation_6d(matrix: torch.Tensor) -> torch.Tensor:
+    """
+    Converts rotation matrices to 6D rotation representation by Zhou et al. [1]
+    by dropping the last row. Note that 6D representation is not unique.
+    Args:
+        matrix: batch of rotation matrices of size (*, 3, 3)
+
+    Returns:
+        6D rotation representation, of size (*, 6)
+
+    [1] Zhou, Y., Barnes, C., Lu, J., Yang, J., & Li, H.
+    On the Continuity of Rotation Representations in Neural Networks.
+    IEEE Conference on Computer Vision and Pattern Recognition, 2019.
+    Retrieved from http://arxiv.org/abs/1812.07035
+    """
+    batch_dim = matrix.size()[:-2]
+    return matrix[..., :2, :].clone().reshape(batch_dim + (6,))
 
 
 def rad2deg(tensor):

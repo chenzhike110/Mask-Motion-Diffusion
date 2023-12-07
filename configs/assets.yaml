@@ -1,0 +1,3 @@
+SMPL_PATH: './deps/body_models/smplh/neutral/model.npz'
+DATASET:
+  AMASS: './datasets/AMASS'

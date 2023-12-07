@@ -24,6 +24,7 @@
 import numpy as np
 import torch
 from .transform import matrot2aa
+from .tgm_conversion import angle_axis_to_rotation_matrix, rotation_matrix_to_rotation_6d
 from torch import nn
 from torch.nn import functional as F
 
@@ -46,6 +47,20 @@ class NormalDistDecoder(nn.Module):
     def forward(self, Xout):
         return torch.distributions.normal.Normal(self.mu(Xout), F.softplus(self.logvar(Xout)))
 
+class ContinousRotReprDecoder(nn.Module):
+    def __init__(self):
+        super(ContinousRotReprDecoder, self).__init__()
+
+    def forward(self, module_input):
+        reshaped_input = module_input.view(-1, 3, 2)
+
+        b1 = F.normalize(reshaped_input[:, :, 0], dim=1)
+
+        dot_prod = torch.sum(b1 * reshaped_input[:, :, 1], dim=1, keepdim=True)
+        b2 = F.normalize(reshaped_input[:, :, 1] - dot_prod * b1, dim=-1)
+        b3 = torch.cross(b1, b2, dim=1)
+
+        return torch.stack([b1, b2, b3], dim=-1)
 
 class VPoser(nn.Module):
     """
@@ -80,6 +95,7 @@ class VPoser(nn.Module):
             nn.Linear(num_neurons, num_neurons),
             nn.LeakyReLU(),
             nn.Linear(num_neurons, self.num_joints * 6),
+            ContinousRotReprDecoder()
         )
 
     def encode(self, pose_body):
@@ -88,6 +104,11 @@ class VPoser(nn.Module):
         :param rep_type: 'matrot'/'aa' for matrix rotations or axis-angle
         :return:
         '''
+        # euler to rotation6d
+        if pose_body.shape[-1] == self.num_joints * 3:
+            batch, _ = pose_body.shape
+            pose_body = pose_body.reshape(-1, 3)
+            pose_body = rotation_matrix_to_rotation_6d(angle_axis_to_rotation_matrix(pose_body)[:, :3, :3]).reshape(batch, -1)
         return self.encoder_net(pose_body)
 
     def decode(self, Zin):

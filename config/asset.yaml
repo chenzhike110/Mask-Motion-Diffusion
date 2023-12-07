@@ -1,3 +1,0 @@
-DATASET:
-  SMPL_PATH: './deps/smpl'
-  HUMANML3D: './datasets/humanml3d'
