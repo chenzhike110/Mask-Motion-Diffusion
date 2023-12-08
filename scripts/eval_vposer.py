@@ -7,9 +7,6 @@ from libs.models import VPoser
 
 device = torch.device("cuda")
 vposer = VPoser().to(device)
-checkpoint = torch.load("./saved/Vposer/best_model.ckpt", map_location=device)
-vposer.load_state_dict(checkpoint)
-vposer.eval()
 
 def covert_ckpt():
     pass
@@ -31,10 +28,12 @@ def show_sample(num_poses):
         scene.add_geometry(mesh)
     scene.show()
 
-def eval_FID():
+def eval_vae():
+    # compute diversity
     from tqdm import tqdm
-    from libs.metrics import calculate_frechet_distance
+    from libs.metrics import calculate_frechet_distance, calculate_diversity_np
     batch_size = 128
+    diversity_times = 300
     test_file = "./datasets/AMASS/test/pose_body.pt"
     test_file = torch.load(test_file).type(torch.float32)
 
@@ -47,6 +46,8 @@ def eval_FID():
                 trgs = trg
             else:
                 trgs = np.concatenate((trgs, trg))
+
+    diversity_times = min(test_file.shape[0], diversity_times)
     
     test_file = test_file.numpy()
     mu1 = np.mean(test_file)
@@ -55,10 +56,19 @@ def eval_FID():
     cov2 = np.cov(trgs, rowvar=False)
 
     FID = calculate_frechet_distance(mu1, cov1, mu2, cov2)
-    print("Model FID scores: ", FID)
+    DIV = calculate_diversity_np(trgs, diversity_times)
+    GT_DIV = calculate_diversity_np(test_file, diversity_times)
+
+    print("Model FID score: ", FID)
+    print("Model DIV score: ", DIV)
+    print("GT DIV score: ", GT_DIV)
 
 if __name__ == "__main__":
-    eval_FID()
+    # checkpoint = torch.load("./saved/Vposer/best_model.ckpt", map_location=device)
+    checkpoint = torch.load("./saved/Vposer/checkpoints/epoch=1.ckpt", map_location=device)
+    vposer.load_state_dict(checkpoint['state_dict'])
+    vposer.eval()
+    eval_vae()
 
 
 

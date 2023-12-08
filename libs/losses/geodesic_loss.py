@@ -51,7 +51,7 @@ def bgs(d6s):
 
 
 class geodesic_loss_R(nn.Module):
-    def __init__(self, reduction='batchmean'):
+    def __init__(self, reduction='mean'):
         super(geodesic_loss_R, self).__init__()
 
         self.reduction = reduction
@@ -62,19 +62,15 @@ class geodesic_loss_R(nn.Module):
         batch = m1.shape[0]
         m = torch.bmm(m1, m2.transpose(1, 2))  # batch*3*3
 
-        cos = (m[:, 0, 0] + m[:, 1, 1] + m[:, 2, 2] - 1) / 2
-        cos = torch.min(cos, m1.new(np.ones(batch)))
-        cos = torch.max(cos, m1.new(np.ones(batch)) * -1)
-
-        return torch.acos(cos)
+        traces = m.diagonal(dim1=-2, dim2=-1).sum(-1)
+        dists = torch.acos(torch.clamp((traces - 1) / 2, -1 + self.eps, 1 - self.eps))
+        return dists
 
     def forward(self, ypred, ytrue):
         theta = self.bgdR(ypred,ytrue)
-        if self.reduction == 'mean':
-            return torch.mean(theta)
-        if self.reduction == 'batchmean':
-            breakpoint()
-            return torch.mean(torch.sum(theta, dim=theta.shape[1:]))
-
+        if self.reduction == 'sum':
+            return theta.sum()
+        elif self.reduction == 'mean':
+            return theta.mean()
         else:
             return theta

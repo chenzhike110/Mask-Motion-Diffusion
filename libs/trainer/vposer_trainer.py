@@ -65,8 +65,6 @@ class VPoserTrainer(LightningModule):
         return self._get_data('vald')
     
     def configure_optimizers(self):
-        params_count = lambda params: sum(p.numel() for p in params if p.requires_grad)
-
         gen_params = [a[1] for a in self.vposer.named_parameters() if a[1].requires_grad]
         gen_optimizer_class = getattr(optim_module, self.config.TRAIN.OPTIM.TYPE)
         gen_optimizer = gen_optimizer_class(gen_params, **self.config.TRAIN.OPTIM.ARGS)
@@ -86,7 +84,7 @@ class VPoserTrainer(LightningModule):
         return [gen_optimizer], schedulers
     
     def _compute_loss(self, dorig, drec):
-        l1_loss = torch.nn.L1Loss(reduction='mean')
+        l1_loss = torch.nn.SmoothL1Loss(reduction='mean')
         geodesic_loss = geodesic_loss_R(reduction='mean')
 
         bs, latentD = drec['poZ_body_mean'].shape
@@ -114,16 +112,17 @@ class VPoserTrainer(LightningModule):
             loc=torch.zeros((bs, latentD), device=device, requires_grad=False),
             scale=torch.ones((bs, latentD), device=device, requires_grad=False))
         weighted_loss_dict = {
-            'loss_kl':loss_kl_wt * torch.mean(torch.sum(torch.distributions.kl.kl_divergence(q_z, p_z), dim=[1])),
+            'loss_kl':loss_kl_wt * torch.distributions.kl.kl_divergence(q_z, p_z).mean(),
             'loss_mesh_rec': loss_rec_wt * v2v
         }
+
+        weighted_loss_dict['matrot'] = loss_matrot_wt * geodesic_loss(drec['pose_body_matrot'].view(-1,3,3), aa2matrot(dorig['pose_body'].view(-1, 3)))
+        weighted_loss_dict['jtr'] = loss_jtr_wt * l1_loss(bm_rec.Jtr, bm_orig.Jtr)
 
         weighted_loss_dict['loss_total'] = torch.stack(list(weighted_loss_dict.values())).sum()
 
         # if (self.current_epoch < self.config.TRAIN.keep_extra_loss_terms_until_epoch):
             # breakpoint()
-        weighted_loss_dict['matrot'] = loss_matrot_wt * geodesic_loss(drec['pose_body_matrot'].view(-1,3,3), aa2matrot(dorig['pose_body'].view(-1, 3)))
-        weighted_loss_dict['jtr'] = loss_jtr_wt * l1_loss(bm_rec.Jtr, bm_orig.Jtr)
 
         with torch.no_grad():
             unweighted_loss_dict = {'v2v': torch.sqrt(torch.pow(bm_rec.v-bm_orig.v, 2).sum(-1)).mean()}
@@ -142,7 +141,6 @@ class VPoserTrainer(LightningModule):
 
         for k, v in loss['weighted_loss'].items():
             self.log(k, v, prog_bar=True, logger=True)
-        self.log('train_loss', train_loss)
 
         return {'loss': train_loss}
 
@@ -155,3 +153,6 @@ class VPoserTrainer(LightningModule):
 
         self.log("val_loss", val_loss)
         return {'val_loss': copy2cpu(val_loss)}
+    
+    def on_save_checkpoint(self, checkpoint):
+        checkpoint['state_dict'] = self.vposer.state_dict()

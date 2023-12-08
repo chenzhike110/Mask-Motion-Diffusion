@@ -36,6 +36,8 @@ def main():
     ]
     
     pltrainer = pl.Trainer(
+        gradient_clip_val=0.1, 
+        gradient_clip_algorithm="value",
         benchmark=False,
         max_epochs=cfg.TRAIN.END_EPOCH,
         accelerator=cfg.ACCELERATOR,

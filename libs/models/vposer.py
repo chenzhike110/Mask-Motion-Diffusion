@@ -45,7 +45,10 @@ class NormalDistDecoder(nn.Module):
         self.logvar = nn.Linear(num_feat_in, latentD)
 
     def forward(self, Xout):
-        return torch.distributions.normal.Normal(self.mu(Xout), F.softplus(self.logvar(Xout)))
+        mu = self.mu(Xout)
+        var = torch.exp(0.5 * self.logvar(Xout))
+        eps = torch.randn_like(var)
+        return eps * var + mu, torch.distributions.normal.Normal(mu, var)
 
 class ContinousRotReprDecoder(nn.Module):
     def __init__(self):
@@ -68,7 +71,7 @@ class VPoser(nn.Module):
     """
     def __init__(self, 
                  num_neurons : int = 512, 
-                 latentD : int = 256):
+                 latentD : int = 32):
         super(VPoser, self).__init__()
 
         self.latentD = latentD
@@ -78,25 +81,35 @@ class VPoser(nn.Module):
 
         self.encoder_net = nn.Sequential(
             BatchFlatten(),
-            nn.BatchNorm1d(n_features),
             nn.Linear(n_features, num_neurons),
-            nn.LeakyReLU(),
             nn.BatchNorm1d(num_neurons),
-            nn.Dropout(0.1),
+            nn.LeakyReLU(),
             nn.Linear(num_neurons, num_neurons),
+            nn.BatchNorm1d(num_neurons),
+            nn.LeakyReLU(),
             nn.Linear(num_neurons, num_neurons),
+            nn.BatchNorm1d(num_neurons),
+            nn.LeakyReLU(),
             NormalDistDecoder(num_neurons, self.latentD)
         )
 
         self.decoder_net = nn.Sequential(
             nn.Linear(self.latentD, num_neurons),
+            nn.BatchNorm1d(num_neurons),
             nn.LeakyReLU(),
-            nn.Dropout(0.1),
             nn.Linear(num_neurons, num_neurons),
+            nn.BatchNorm1d(num_neurons),
             nn.LeakyReLU(),
             nn.Linear(num_neurons, self.num_joints * 6),
             ContinousRotReprDecoder()
         )
+
+        self._reset_parameters()
+    
+    def _reset_parameters(self):
+        for p in self.parameters():
+            if isinstance(p, nn.Linear):
+                torch.nn.init.kaiming_uniform_(p)
 
     def encode(self, pose_body):
         '''
@@ -129,9 +142,9 @@ class VPoser(nn.Module):
         :param output_type: matrot / aa
         :return:
         '''
-
-        q_z = self.encode(pose_body)
-        q_z_sample = q_z.rsample()
+        assert torch.isnan(pose_body).any().sum() == 0
+        q_z_sample, q_z = self.encode(pose_body)
+        # q_z_sample = q_z.rsample()
         decode_results = self.decode(q_z_sample)
         decode_results.update({'poZ_body_mean': q_z.mean, 'poZ_body_std': q_z.scale, 'q_z': q_z})
         return decode_results

@@ -6,18 +6,17 @@ FOLDER_EXP: "./saved/Vposer"
 
 MODEL:
   num_neurons : 512
-  latentD : 256
+  latentD : 32
 
 TRAIN:
   SEED: 100
   NUM_WORKERS: 11
-  BATCH_SIZE: 64
+  BATCH_SIZE: 128
   END_EPOCH: 6000
   OPTIM:
-    TYPE: Adam
+    TYPE: AdamW
     ARGS:
-      lr: 1e-3
-      weight_decay: 1e-5
+      lr: 1e-4
   LR_SCHEDULER:
     TYPE: ReduceLROnPlateau
     ARGS:
@@ -32,7 +31,7 @@ TRAIN:
     mode: min
 
 LOSS:
-  loss_kl_wt: 0.006
-  loss_rec_wt: 1.5
-  loss_matrot_wt: 1
-  loss_jtr_wt: 1
+  loss_kl_wt: 0.005
+  loss_rec_wt: 4.0
+  loss_matrot_wt: 2.0
+  loss_jtr_wt: 2.0

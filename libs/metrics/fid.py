@@ -1,6 +1,22 @@
 import numpy as np
 from scipy import linalg
 
+def calculate_diversity_np(activation, diversity_times):
+    assert len(activation.shape) == 2
+    assert activation.shape[0] > diversity_times
+    num_samples = activation.shape[0]
+
+    first_indices = np.random.choice(num_samples,
+                                     diversity_times,
+                                     replace=False)
+    second_indices = np.random.choice(num_samples,
+                                      diversity_times,
+                                      replace=False)
+    dist = linalg.norm(activation[first_indices] -
+                             activation[second_indices],
+                             axis=1)
+    return dist.mean()
+
 # from action2motion
 def calculate_fid(statistics_1, statistics_2):
     return calculate_frechet_distance(statistics_1[0], statistics_1[1],

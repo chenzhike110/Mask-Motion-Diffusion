@@ -1,1 +1,1 @@
-from .fid import calculate_frechet_distance
+from .fid import calculate_frechet_distance, calculate_diversity_np
