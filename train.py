@@ -1,7 +1,7 @@
 import os
 from libs.config import parse_args, makepath
 from libs.trainer.progress import ProgressLogger
-from libs.get_model import get_model
+from libs.get_model import get_model_with_config
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.callbacks import LearningRateMonitor
@@ -13,12 +13,7 @@ def main():
     early_stop_callback = EarlyStopping(**cfg.TRAIN.early_stopping)
 
     # optimizer
-    metric_monitor = {
-        'KL':'loss_kl',
-        'Mesh': 'loss_mesh_rec',
-        'Mat': 'matrot',
-        'jtr': 'jtr'
-    }
+    metric_monitor = dict(cfg.TRAIN.METRICS)
 
     callbacks = [
         pl.callbacks.RichProgressBar(),
@@ -45,7 +40,7 @@ def main():
         callbacks=callbacks
     )
 
-    model = get_model(cfg)
+    model = get_model_with_config(cfg)
     pltrainer.fit(model)
 
 if __name__ == "__main__":

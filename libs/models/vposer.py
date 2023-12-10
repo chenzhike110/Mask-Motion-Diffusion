@@ -43,11 +43,12 @@ class NormalDistDecoder(nn.Module):
 
         self.mu = nn.Linear(num_feat_in, latentD)
         self.logvar = nn.Linear(num_feat_in, latentD)
+        self.N = torch.distributions.Normal(0, 1)
 
     def forward(self, Xout):
         mu = self.mu(Xout)
         var = torch.exp(0.5 * self.logvar(Xout))
-        eps = torch.randn_like(var)
+        eps = self.N.sample(var.shape).to(var.device)
         return eps * var + mu, torch.distributions.normal.Normal(mu, var)
 
 class ContinousRotReprDecoder(nn.Module):

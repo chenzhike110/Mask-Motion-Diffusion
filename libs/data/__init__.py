@@ -1,1 +1,2 @@
-from .AMASS import VPoserDS
+from .AMASS import AMASS
+from .HumanML3D import HumanML3D

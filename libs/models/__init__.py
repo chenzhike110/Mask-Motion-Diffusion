@@ -1,2 +1,3 @@
 from .vposer import VPoser
-from .transformer import DiT
+from .denoiser import Denoiser
+from .mdm import MDM

@@ -1,3 +1,5 @@
 SMPL_PATH: './deps/body_models/smplh/neutral/model.npz'
-DATASET:
+DATASETS:
   AMASS: './datasets/AMASS'
+  HumanML3D: './datasets/HumanML3D'
+  

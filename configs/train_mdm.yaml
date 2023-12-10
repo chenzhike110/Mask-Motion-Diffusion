@@ -1,0 +1,60 @@
+NAME: MDM
+ACCELERATOR: 'gpu'
+DEVICE: [0]
+FOLDER_EXP: "./saved/MDM"
+
+DATASET: HumanML3D
+
+MODEL:
+  NAME: MDM
+  joints_num: 22
+  TEXT:
+    ENCODER: './deps/clip-vit-large-patch14'
+    TOKENIZER: './deps/clip-vit-large-patch14'
+  VAE:
+    NAME: "VPoser"
+    CHECKPOINT: "./saved/Vposer/epoch=1.ckpt"
+    args:
+      num_neurons : 512
+      latentD : 32
+  DENOISER:
+    NAME: "Denoiser"
+    predict_xstart: True
+    timestep_respacing: ''
+    num_inference_timesteps: 1000
+    args:
+      input_size: 36
+      hidden_size: 768
+      patch_size: 199
+      depth: 6
+      num_heads: 4
+      mlp_ratio: 2.0
+      dropout: 0.1
+      activation: "gelu"
+      learn_sigma: False
+  ACTION:
+    num_classes: 12
+    class_dropout_prob: 0.1
+
+TRAIN:
+  NUM_WORKERS: 11
+  BATCH_SIZE: 8
+  END_EPOCH: 6000
+  OPTIM:
+    TYPE: AdamW
+    ARGS:
+      lr: 1e-4
+  LR_SCHEDULER:
+    TYPE: ReduceLROnPlateau
+    ARGS:
+      verbose: true
+      patience: 10
+  keep_extra_loss_terms_until_epoch: 0
+  early_stopping:
+    monitor: val_loss
+    min_delta: 0.0
+    patience: 15
+    verbose: True
+    mode: min
+  METRICS:
+    Loss: 'loss'
