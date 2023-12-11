@@ -1,4 +1,5 @@
 import os
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 from libs.config import parse_args, makepath
 from libs.trainer.progress import ProgressLogger
 from libs.get_model import get_model_with_config

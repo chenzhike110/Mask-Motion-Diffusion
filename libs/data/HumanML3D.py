@@ -137,6 +137,9 @@ class HumanML3D(Dataset):
         
         # pose_body, pose_root, length, text
         pose_body = motion[:, 4 + (self.joints_num - 1) * 3: 4 + (self.joints_num - 1) * 9]
-        pose_root = motion[:, :4]
+        if not self.normalize:
+            pose_root = (motion[:, :4] - self.mean[:4]) / self.std[:4]
+        else:
+            pose_root = motion[:, :4]
 
-        return {"pose_body":pose_body, "pose_root":pose_root, "length":m_length, "text":caption}
+        return {"pose_body":pose_body, "pose_root":pose_root, "length":m_length, "text":caption, 'mean':self.mean, 'std':self.std}

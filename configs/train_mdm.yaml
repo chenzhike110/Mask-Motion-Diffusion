@@ -37,7 +37,7 @@ MODEL:
     class_dropout_prob: 0.1
 
 TRAIN:
-  NUM_WORKERS: 11
+  NUM_WORKERS: 12
   BATCH_SIZE: 8
   END_EPOCH: 6000
   OPTIM:
@@ -56,5 +56,6 @@ TRAIN:
     patience: 15
     verbose: True
     mode: min
+  guidance_uncodp: 0.2
   METRICS:
     Loss: 'loss'
