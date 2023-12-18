@@ -14,18 +14,28 @@ class HumanML3D(Dataset):
         assert os.path.exists(dataset_dir), dataset_dir
 
         # hyperparameters
-        min_motion_len = 40
+        min_motion_len = 19
         self.unit_length = 4
         self.joints_num = 22
-        self.max_length = 20
+        self.max_length = 19
         self.padding_length = 199
         self.normalize = normalize
 
-        self.motion_dir = os.path.join(dataset_dir, 'new_joint_vecs')
+        self.motion_dir = os.path.join(dataset_dir, 'joints_smpl_processed')
         self.text_dir = os.path.join(dataset_dir, 'texts')
         self.mean = np.load(os.path.join(dataset_dir, 'Mean.npy'))
         self.std = np.load(os.path.join(dataset_dir, 'Std.npy'))
         self.ds = {}
+
+        self.root_mean = np.zeros(6, dtype=np.float32)
+        self.root_std = np.zeros(6, dtype=np.float32)
+        self.root_mean[:2] = self.mean[:2] 
+        self.root_mean[2:] = self.mean[5:9]
+        self.root_std[:2] = self.std[:2] 
+        self.root_std[2:] = self.std[5:9]
+
+        if len(data_fields) == 0:
+            return
         
         data_dict = {}
         id_list = []
@@ -38,7 +48,12 @@ class HumanML3D(Dataset):
         length_list = []
         for name in id_list:
             try:
-                motion = np.load(os.path.join(self.motion_dir, name + '.npy'))
+                motion = np.load(os.path.join(self.motion_dir, name + '.npz'), allow_pickle=True)
+                trans = motion['trans']
+                vel = trans[1:, :] - trans[:-1, :]
+                # vel x,y + height z + aixs angle rotation * joint_num
+                motion = np.concatenate((vel[:, :-1], trans[:-1, 2:], motion['poses'][:-1, :66]), axis=-1, dtype=np.float32)
+
                 if (len(motion)) < min_motion_len or (len(motion) >= 200):
                     continue
                 text_data = []
@@ -77,12 +92,12 @@ class HumanML3D(Dataset):
                                 print(line_split[2], line_split[3], f_tag, to_tag, name)
                                 # break
 
-                        if flag:
-                            data_dict[name] = {'motion': motion,
-                                            'length': len(motion),
-                                            'text': text_data}
-                            new_name_list.append(name)
-                            length_list.append(len(motion))
+                if flag:
+                    data_dict[name] = {'motion': motion,
+                                    'length': len(motion),
+                                    'text': text_data}
+                    new_name_list.append(name)
+                    length_list.append(len(motion))
             except:
                 pass
 
@@ -128,6 +143,8 @@ class HumanML3D(Dataset):
         "Z Normalization"
         if self.normalize:
             motion = (motion - self.mean) / self.std
+        else:
+            motion[:, :6] = (motion[:, :6] - self.root_mean) / self.root_std
 
         # padding zero
         if m_length < self.padding_length:
@@ -136,10 +153,7 @@ class HumanML3D(Dataset):
                                      ], axis=0, dtype=np.float32)
         
         # pose_body, pose_root, length, text
-        pose_body = motion[:, 4 + (self.joints_num - 1) * 3: 4 + (self.joints_num - 1) * 9]
-        if not self.normalize:
-            pose_root = (motion[:, :4] - self.mean[:4]) / self.std[:4]
-        else:
-            pose_root = motion[:, :4]
+        pose_body = motion[:, 6: 6 + (self.joints_num - 1) * 3]
+        pose_root = motion[:, :6]
 
-        return {"pose_body":pose_body, "pose_root":pose_root, "length":m_length, "text":caption, 'mean':self.mean, 'std':self.std}
+        return {"pose_body":pose_body, "pose_root":pose_root, "length":m_length, "text":caption}

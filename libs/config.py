@@ -25,7 +25,7 @@ def parse_args():
             "--cfg",
             type=str,
             required=False,
-            default="./configs/train_mdm.yaml",
+            default="./configs/vae_mdm.yaml",
             help="config file",
         )
     group.add_argument(

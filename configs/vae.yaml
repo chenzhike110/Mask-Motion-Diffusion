@@ -1,18 +1,18 @@
 NAME: VPoser_6D
-ACCELERATOR: 'gpu'
-DEVICE: [0]
-TRAINER: vposer_trainer.VPoserTrainer
-FOLDER_EXP: "./saved/Vposer"
 
 MODEL:
+  NAME: VPoser
   num_neurons : 512
   latentD : 32
 
 TRAIN:
-  SEED: 100
-  NUM_WORKERS: 11
-  BATCH_SIZE: 128
+  DATASET: AMASS
+  NUM_WORKERS: 20
+  BATCH_SIZE: 256
   END_EPOCH: 6000
+  ACCELERATOR: 'gpu'
+  DEVICE: [0, 1, 2, 3]
+  FOLDER_EXP: "./saved/Vposer"
   OPTIM:
     TYPE: AdamW
     ARGS:
@@ -21,7 +21,7 @@ TRAIN:
     TYPE: ReduceLROnPlateau
     ARGS:
       verbose: true
-      patience: 5
+      patience: 10
   keep_extra_loss_terms_until_epoch: 0
   early_stopping:
     monitor: val_loss
@@ -29,9 +29,11 @@ TRAIN:
     patience: 10
     verbose: True
     mode: min
+  METRICS:
+    Loss: 'loss'
 
 LOSS:
   loss_kl_wt: 0.005
   loss_rec_wt: 4.0
-  loss_matrot_wt: 2.0
-  loss_jtr_wt: 2.0
+  loss_matrot_wt: 8.0
+  loss_jtr_wt: 8.0

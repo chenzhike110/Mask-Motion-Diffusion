@@ -20,7 +20,8 @@
 # Nima Ghorbani <https://nghorbani.github.io/>
 #
 # 2018.12.13
-
+import pickle as pkl
+import codecs as cs
 import numpy as np
 import torch
 import torch.nn as nn
@@ -57,6 +58,8 @@ class BodyModel(nn.Module):
         # -- Load SMPL params --
         if bm_fname.endswith('.npz'):
             smpl_dict = np.load(bm_fname, encoding='latin1')
+        elif bm_fname.endswith('.pkl'):
+            smpl_dict = pkl.load(cs.open(bm_fname, 'rb'), encoding='latin1')
         else:
             raise ValueError(f'bm_fname must be a .npz file: {bm_fname}')
 
@@ -181,7 +184,7 @@ class BodyModel(nn.Module):
             self.register_buffer(name, value)
 
     def r(self):
-        from human_body_prior.tools.omni_tools import copy2cpu as c2c
+        from ..models.utils import copy2cpu as c2c
         return c2c(self.forward().v)
 
     def forward(self, root_orient=None, pose_body=None, pose_hand=None, pose_jaw=None, pose_eye=None, betas=None,
