@@ -19,7 +19,6 @@ from .embedding import LabelEmbedder
 # from .transform import recover_root_rot_pos, matrot2aa
 # from .tgm_conversion import quaternion_to_angle_axis, rotation_6d_to_matrix
 from .utils import copy2cpu
-from ..data.utils import mld_collate
 
 
 class MDM(LightningModule):
@@ -45,6 +44,11 @@ class MDM(LightningModule):
             self.text_proj = None
         else:
             self.text_proj = torch.nn.Linear(config.MODEL.text_embed_dim, config.MODEL.DENOISER.args.hidden_size)
+
+        if config.MODEL.DENOISER.args.hidden_size == self.text_embedder.text_embed_dim:
+            self.text_proj = None
+        else:
+            self.text_proj = torch.nn.Linear(self.text_embedder.text_embed_dim, config.MODEL.DENOISER.args.hidden_size)
 
         self.num_inference_timesteps=config.MODEL.DENOISER.num_inference_timesteps
         

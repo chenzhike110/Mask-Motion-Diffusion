@@ -145,6 +145,7 @@ class HumanML3D(Dataset):
         assert os.path.exists(dataset_dir), dataset_dir
 
         # hyperparameters
+<<<<<<< HEAD
         min_motion_len = 30
         self.unit_length = 4
         self.joints_num = 22
@@ -155,11 +156,31 @@ class HumanML3D(Dataset):
         self.std = std
 
         self.motion_dir = os.path.join(dataset_dir, 'joints_smpl_pose6d')
+=======
+        min_motion_len = 19
+        self.unit_length = 4
+        self.joints_num = 22
+        self.max_length = 19
+        self.padding_length = 199
+        self.normalize = normalize
+
+        self.motion_dir = os.path.join(dataset_dir, 'joints_smpl_processed')
+>>>>>>> 483f71c25ad588786ffd71f1d7bec3df7dc04878
         self.text_dir = os.path.join(dataset_dir, 'texts')
         self.text_embedding_dir = os.path.join(dataset_dir, 'text_embeddings')
 
         self.ds = {}
 
+<<<<<<< HEAD
+=======
+        self.root_mean = np.zeros(6, dtype=np.float32)
+        self.root_std = np.zeros(6, dtype=np.float32)
+        self.root_mean[:2] = self.mean[:2] 
+        self.root_mean[2:] = self.mean[5:9]
+        self.root_std[:2] = self.std[:2] 
+        self.root_std[2:] = self.std[5:9]
+
+>>>>>>> 483f71c25ad588786ffd71f1d7bec3df7dc04878
         if len(data_fields) == 0:
             return
         
@@ -175,12 +196,21 @@ class HumanML3D(Dataset):
         for name in tqdm(id_list):
             try:
                 motion = np.load(os.path.join(self.motion_dir, name + '.npz'), allow_pickle=True)
+<<<<<<< HEAD
                 motion = np.concatenate((motion['trans'],motion['root_orient']), axis=-1, dtype=np.float32)
                 # trans = np.load(os.path.join(self.trans_dir, name + '.npy'))
                 # vel x,y + height z + aixs angle rotation * joint_num
                 # motion = np.concatenate((trans[:, :4], motion['poses'][:-1, :63]), axis=-1, dtype=np.float32)
 
                 if (len(motion)) < min_motion_len or (len(motion) >= 201):
+=======
+                trans = motion['trans']
+                vel = trans[1:, :] - trans[:-1, :]
+                # vel x,y + height z + aixs angle rotation * joint_num
+                motion = np.concatenate((vel[:, :-1], trans[:-1, 2:], motion['poses'][:-1, :66]), axis=-1, dtype=np.float32)
+
+                if (len(motion)) < min_motion_len or (len(motion) >= 200):
+>>>>>>> 483f71c25ad588786ffd71f1d7bec3df7dc04878
                     continue
                 text_data = []
                 flag = False
@@ -267,6 +297,8 @@ class HumanML3D(Dataset):
         "Z Normalization"
         if self.normalize:
             motion = (motion - self.mean) / self.std
+        else:
+            motion[:, :6] = (motion[:, :6] - self.root_mean) / self.root_std
 
         # padding zero
         # if m_length < self.padding_length:
@@ -275,6 +307,7 @@ class HumanML3D(Dataset):
         #                              ], axis=0, dtype=np.float32)
         
         # pose_body, pose_root, length, text
+<<<<<<< HEAD
         pose_body = motion[:, 3:]
         pose_root = motion[:, :3]
 
@@ -285,3 +318,9 @@ class HumanML3D(Dataset):
             caption,
             token
         )
+=======
+        pose_body = motion[:, 6: 6 + (self.joints_num - 1) * 3]
+        pose_root = motion[:, :6]
+
+        return {"pose_body":pose_body, "pose_root":pose_root, "length":m_length, "text":caption}
+>>>>>>> 483f71c25ad588786ffd71f1d7bec3df7dc04878

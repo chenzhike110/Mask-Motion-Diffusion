@@ -34,7 +34,7 @@ def main():
             dirpath=makepath(os.path.join(cfg.TRAIN.FOLDER_EXP, "checkpoints"), isfile=True),
             filename="{epoch}_{val_loss:.2f}",
             verbose=True,
-            save_top_k=-1,
+            save_top_k=2,
             monitor='val_loss',
             mode='min',
             save_weights_only=True,
