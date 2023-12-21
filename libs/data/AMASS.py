@@ -29,7 +29,8 @@ from torch.utils.data import Dataset
 class AMASS(Dataset):
     """AMASS: a pytorch loader for unified human motion capture dataset. http://amass.is.tue.mpg.de/"""
 
-    def __init__(self, dataset_dir, data_fields=[]):
+    def __init__(self, dataset_dir, split=None, data_fields=['pose_body']):
+        dataset_dir = os.path.join(dataset_dir, split)
         assert os.path.exists(dataset_dir), dataset_dir
         self.ds = {}
         for data_fname in glob.glob(os.path.join(dataset_dir, '*.pt')):

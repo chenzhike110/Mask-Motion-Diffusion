@@ -1,0 +1,62 @@
+NAME: MDM
+
+MODEL:
+  NAME: MDM
+  joints_num: 22
+  text_embed_dim: 512
+  CHECKPOINT: './saved/MDM/checkpoints/epoch=15_val_loss=0.52.ckpt'
+  TEXT:
+    ENCODER: './deps/clip-vit-base-patch16'
+    TOKENIZER: './deps/clip-vit-base-patch16'
+  DENOISER:
+    NAME: "Denoiser"
+    sigma_small: True
+    predict_xstart: True
+    noise_schedule: 'squaredcos_cap_v2'
+    timestep_respacing: ''
+    num_inference_timesteps: 1000
+    args:
+      input_size: 132
+      hidden_size: 512
+      depth: 8
+      num_heads: 4
+      mlp_ratio: 2
+      dropout: 0.1
+      activation: "gelu"
+      learn_sigma: False
+  ACTION:
+    num_classes: 12
+    class_dropout_prob: 0.1
+
+TRAIN:
+  ACCELERATOR: 'gpu'
+  DEVICE: [2,3]
+  FOLDER_EXP: "./saved/MDM"
+  DATASET: HumanML3DDataModule
+  NUM_WORKERS: 16
+  BATCH_SIZE: 64
+  END_EPOCH: 6000
+  val_frequency: 1
+  OPTIM:
+    TYPE: AdamW
+    ARGS:
+      lr: 1e-4
+  LR_SCHEDULER:
+    TYPE: ReduceLROnPlateau
+    ARGS:
+      verbose: true
+      factor: 0.5
+      patience: 50
+      eps: 1e-6
+  guidance_uncodp: 0.2
+  METRICS:
+    diff_loss: 'diff_loss'
+    v2v: 'v2v'
+    j2j: 'j2j'
+    v2v_local: 'v2v_local'
+  LOSS:
+    diff_loss: 1.0
+    # v2v: 0.1
+    # j2j: 0.1
+    geodesic_loss: 2.0
+    # v2v_local: 5.0

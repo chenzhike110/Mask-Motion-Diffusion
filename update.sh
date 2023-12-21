@@ -1,0 +1,1 @@
+rsync -rvz -e 'ssh -p 23333' -av --exclude saved/ lightning_logs/ --progress ../No-name dhz@10.12.120.46:/home/dhz/czk

@@ -25,7 +25,7 @@ def parse_args():
             "--cfg",
             type=str,
             required=False,
-            default="./configs/train_mdm.yaml",
+            default="./configs/mdm.yaml",
             help="config file",
         )
     group.add_argument(
@@ -35,11 +35,19 @@ def parse_args():
             default="./configs/assets.yaml",
             help="config file for asset paths",
         )
+    group.add_argument(
+            "--scheduler",
+            type=str,
+            required=False,
+            default="./configs/scheduler.yaml",
+            help="config file for diffusion scheduler",
+        )
     params = parser.parse_args()
     
     cfg_exp = OmegaConf.load(params.cfg)
     cfg_assets = OmegaConf.load(params.cfg_assets)
-    cfg = OmegaConf.merge(cfg_exp, cfg_assets)
+    cfg_scheduler = OmegaConf.load(params.scheduler)
+    cfg = OmegaConf.merge(cfg_exp, cfg_assets, cfg_scheduler)
     
     return cfg
     

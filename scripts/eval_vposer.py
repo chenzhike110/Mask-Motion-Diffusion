@@ -63,9 +63,18 @@ def eval_vae():
     print("Model DIV score: ", DIV)
     print("GT DIV score: ", GT_DIV)
 
+def apply_vae(dataset="humanML3D"):
+    if dataset == "humanML3D":
+        from libs.data import HumanML3D
+        dataset = HumanML3D("./datasets/HumanML3D", "test")
+    else:
+        raise NotImplementedError(dataset)
+    
+    
+
 if __name__ == "__main__":
     # checkpoint = torch.load("./saved/Vposer/best_model.ckpt", map_location=device)
-    checkpoint = torch.load("./saved/Vposer/checkpoints/epoch=1.ckpt", map_location=device)
+    checkpoint = torch.load("./saved/Vposer/checkpoints/epoch=37.ckpt", map_location=device)
     vposer.load_state_dict(checkpoint['state_dict'])
     vposer.eval()
     eval_vae()

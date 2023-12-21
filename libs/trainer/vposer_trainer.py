@@ -5,7 +5,7 @@ from os import path as osp
 from torch.utils.data import DataLoader
 from torch import optim as optim_module
 from torch.optim import lr_scheduler as lr_sched_module
-from pytorch_lightning import LightningModule
+from lightning.pytorch import LightningModule
 
 from .utils import make_deterministic, copy2cpu
 from ..losses.geodesic_loss import geodesic_loss_R
@@ -23,12 +23,6 @@ class VPoserTrainer(LightningModule):
 
         self.config = config
         self.dataset_dir = self.config.DATASET.AMASS
-
-        # set seed
-        if config.TRAIN.SEED == -1:
-            config.TRAIN.SEED = random.randint(0, 25536)
-        print(config.TRAIN.SEED)
-        make_deterministic(config.TRAIN.SEED)
         
         # set up model
         self.vposer = VPoser(

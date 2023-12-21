@@ -652,7 +652,7 @@ class GaussianDiffusion:
             device = next(model.parameters()).device
         assert isinstance(shape, (tuple, list))
         if noise is not None:
-            img = noise
+            img = noise.to(device)
         else:
             img = th.randn(*shape, device=device)
         indices = list(range(self.num_timesteps))[::-1]
@@ -781,6 +781,8 @@ class GaussianDiffusion:
                 terms["loss"] = terms["mse"] + terms["vb"]
             else:
                 terms["loss"] = terms["mse"]
+            terms["model_output"] = model_output
+            terms["target"] = target
         else:
             raise NotImplementedError(self.loss_type)
 

@@ -173,3 +173,6 @@ lightning_logs
 
 # checkpoints
 saved
+
+# datasets
+datasets/*

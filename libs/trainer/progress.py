@@ -1,7 +1,7 @@
 import logging
 
-from pytorch_lightning import LightningModule, Trainer
-from pytorch_lightning.callbacks import Callback
+from lightning.pytorch import LightningModule, Trainer
+from lightning.pytorch.callbacks import Callback
 import psutil
 
 logger = logging.getLogger()
