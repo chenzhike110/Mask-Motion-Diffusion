@@ -13,6 +13,13 @@ def collate_tensors(batch):
         sub_tensor.add_(b)
     return canvas
 
+# padding t pose in one batch
+def collate_t_pose(batch):
+    dims = batch[0].dim()
+    max_size = [max([b.size(i) for b in batch]) for i in range(dims)]
+    size = (len(batch), ) + tuple(max_size)
+    canvas = batch[0].new_zeros(size=size)
+
 def mld_collate(batch):
     notnone_batches = [b for b in batch if b is not None]
     notnone_batches.sort(key=lambda x: x[2], reverse=True)

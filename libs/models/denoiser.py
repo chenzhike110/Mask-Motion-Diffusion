@@ -83,12 +83,14 @@ class Denoiser(nn.Module):
 
         # x = self.dropout(self.LayerNorm(x))
         # c = t + y or c = (t, y)
-        c = y + t
+        # c = y + t
+        c = torch.cat((t, y), 1)
         c_maks = torch.ones((x.shape[0], c.shape[1]), dtype=torch.bool).to(attention_mask.device)
         attention_mask = torch.cat((c_maks, attention_mask), 1)
 
         xseq = torch.cat((c, x), 1).permute(1, 0, 2) #(seq+1, bs, d)
         output = self.seqTransEncoder(xseq, src_key_padding_mask=attention_mask)[c.shape[1]:, :].permute(1, 0, 2)
+        # output = self.seqTransEncoder(xseq)[c.shape[1]:, :].permute(1, 0, 2)
         output = self.outFinal(output)
         return output
 

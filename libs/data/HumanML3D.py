@@ -5,7 +5,7 @@ import numpy as np
 import codecs as cs
 from tqdm import tqdm
 from torch.utils.data import Dataset
-from pytorch3d.transforms import (
+from pytorch3d.transforms.rotation_conversions import (
     rotation_6d_to_matrix,
     matrix_to_axis_angle,
     quaternion_to_axis_angle
@@ -23,17 +23,20 @@ class HumanML3DDataModule(pl.LightningDataModule):
         self.data_dir = config.DATASETS["HumanML3D"]
 
         self.joints_num = 22
-
-        self.mean = np.load(os.path.join(self.data_dir, 'smpl_Mean.npy'))
-        self.std = np.load(os.path.join(self.data_dir, 'smpl_Std_new.npy'))
-        # self.mean = np.zeros(4+3*(self.joints_num-1))
-        # self.std = np.ones(4+3*(self.joints_num-1))
-        # self.mean[:4] = mean[:4]
-        # self.std[:4] = std[:4]
-        self.text_zero_padding = np.load(os.path.join(self.data_dir, 'text_embeddings/-1.npy'))
         self.bodymodel = BodyModel(config.SMPL_PATH)
-        self.mean_tensor = torch.from_numpy(self.mean).float()
-        self.std_tensor = torch.from_numpy(self.std).float()
+
+        try:
+            self.mean = np.load(os.path.join(self.data_dir, 'smpl_Mean.npy'))
+            self.std = np.load(os.path.join(self.data_dir, 'smpl_Std_new.npy'))
+            # self.mean = np.zeros(4+3*(self.joints_num-1))
+            # self.std = np.ones(4+3*(self.joints_num-1))
+            # self.mean[:4] = mean[:4]
+            # self.std[:4] = std[:4]
+            self.text_zero_padding = np.load(os.path.join(self.data_dir, 'text_embeddings/-1.npy'))
+            self.mean_tensor = torch.from_numpy(self.mean).float()
+            self.std_tensor = torch.from_numpy(self.std).float()
+        except:
+            pass
 
     def setup(self, stage: str):
         self.val = HumanML3D(self.data_dir, data_fields='val')
@@ -267,8 +270,6 @@ class HumanML3D(Dataset):
         "Z Normalization"
         if self.normalize:
             motion = (motion - self.mean) / self.std
-        else:
-            motion[:, :6] = (motion[:, :6] - self.root_mean) / self.root_std
 
         # padding zero
         # if m_length < self.padding_length:
