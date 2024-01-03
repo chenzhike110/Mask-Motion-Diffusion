@@ -3,22 +3,19 @@ import torch
 import inspect
 import time
 import numpy as np
-from torch.utils.data import DataLoader
 import torch.nn as nn
 from torch import optim as optim_module
 from torch.optim import lr_scheduler as lr_sched_module
 from lightning.pytorch import LightningModule
-from transformers import AutoModel, AutoTokenizer
 from pytorch3d.transforms import rotation_6d_to_matrix
 from libs.losses.geodesic_loss import geodesic_loss_R
 
-from ..body_model import BodyModel
-from ..get_model import get_model, get_dataset, instantiate_from_config
-from .diffusion import create_diffusion
-from .embedding import LabelEmbedder
+from libs.get_model import get_model, instantiate_from_config
+from libs.models.diffusion import create_diffusion
+from libs.models.embedding import LabelEmbedder
 # from .transform import recover_root_rot_pos, matrot2aa
 # from .tgm_conversion import quaternion_to_angle_axis, rotation_6d_to_matrix
-from .utils import copy2cpu
+from libs.models.utils import copy2cpu
 
 
 class MDM(LightningModule):
@@ -32,11 +29,18 @@ class MDM(LightningModule):
 
         self.joints_num = config.MODEL.joints_num
         self.config = config
+        self.dump_dir = config.TRAIN.RESULT_EXP
 
         self.denoiser = get_model(config.MODEL.DENOISER)
 
+        self.use_mask = config.MODEL.use_mask
+        self.normalize = config.MODEL.normalize
+        self.with_root = config.MODEL.with_root
+
+        self.zero_padding = nn.parameter.Parameter(torch.zeros(1, config.MODEL.DENOISER.args.input_size, dtype=torch.float32))
+        self.uncondition_embedding = nn.parameter.Parameter(torch.zeros(1, 1, config.MODEL.DENOISER.args.hidden_size, dtype=torch.float32))
         # condition on action class
-        # self.class_embedder = LabelEmbedder(config.MODEL.ACTION.num_classes, config.MODEL.DENOISER.args.hidden_size, config.MODEL.ACTION.class_dropout_prob)
+        # self.class_embedder = LabelEmbedder(config.MODEL.ACTION.num_classes+1, config.MODEL.DENOISER.args.hidden_size, config.MODEL.ACTION.class_dropout_prob)
         
         # condition on text
 
@@ -44,11 +48,6 @@ class MDM(LightningModule):
             self.text_proj = None
         else:
             self.text_proj = torch.nn.Linear(config.MODEL.text_embed_dim, config.MODEL.DENOISER.args.hidden_size)
-
-        if config.MODEL.DENOISER.args.hidden_size == self.text_embedder.text_embed_dim:
-            self.text_proj = None
-        else:
-            self.text_proj = torch.nn.Linear(self.text_embedder.text_embed_dim, config.MODEL.DENOISER.args.hidden_size)
 
         self.num_inference_timesteps=config.MODEL.DENOISER.num_inference_timesteps
         
@@ -108,13 +107,42 @@ class MDM(LightningModule):
         mask = torch.arange(max_length).expand(len(length), max_length).to(length.device) < (length.unsqueeze(1))
         return mask
     
+    def sample_with_constraints(self, batch, constraint):
+        pass
+    
+    def inpainting(self, batch, strength=1.0):
+        texts = batch["text"] 
+        text_embedding = self.get_text_embedding(texts)
+        text_embedding = torch.cat([text_embedding, self.uncondition_embedding.repeat(len(batch["text"]), 1, 1)])
+        lengths = torch.tensor(batch["length"] * 2, dtype=torch.int64)
+        attention_mask = self.generate_sequence_mask(lengths).to(text_embedding.device)
+        model_kwargs = dict(y=text_embedding, attention_mask=~attention_mask)
+
+        z = self._diffusion_reverse_inpainting(
+            batch["sample"],
+            model_kwargs,
+            inpainting_mask=batch['inpainting_mask'],
+            strength=strength
+        )
+
+        # decode
+        if self.vae:
+            z_body = z.view(-1, self.vae.latentD)
+            pose_body_rec = self.vae.decode(z_body)['pose_body'].contiguous().view(len(batch["text"]), -1, (self.joints_num-1)*3)
+        else:
+            pose_body_rec = z
+
+        return pose_body_rec
+
+    
     @torch.no_grad()
     def sample(self, batch):
         # get input
-        texts = batch["text"]
-        lengths = torch.tensor(batch["length"], dtype=torch.int64)
-        max_length = max(lengths)
+        texts = batch["text"] 
         text_embedding = self.get_text_embedding(texts)
+        text_embedding = torch.cat([text_embedding, self.uncondition_embedding.repeat(len(batch["text"]), 1, 1)])
+        lengths = torch.tensor(batch["length"] * 2, dtype=torch.int64)
+        max_length = max(lengths)
         attention_mask = self.generate_sequence_mask(lengths).to(text_embedding.device)
         
         # diffusion
@@ -166,22 +194,31 @@ class MDM(LightningModule):
             "geodesic_loss": rotation_loss
         }
 
-
     def training_step(self, batch, batch_idx, optimizer_idx=None):
         # get input
         add_index = [
             i for i in range(len(batch["text"])) if np.random.rand(1) < self.guidance_uncodp
         ]
-        texts = batch["text"] + [self.dataset.text_zero_padding] * len(add_index)
+        texts = batch["text"]
         lengths =  torch.cat([batch["length"], batch["length"][add_index]])
         attention_mask = self.generate_sequence_mask(lengths)
 
-        # full_pose = torch.cat([batch['pose_root'], batch['pose_body']], dim=-1)
-        full_pose = batch['pose_body']
+        if self.with_root:
+            full_pose = torch.cat([batch['pose_root'], batch['pose_body']], dim=-1)
+        else:
+            full_pose = batch['pose_body']
+        text_embedding = self.get_text_embedding(texts)
+        text_embedding = torch.cat([text_embedding, self.uncondition_embedding.repeat(len(add_index), 1, 1)])
+
+        full_pose = full_pose.view(-1, full_pose.shape[-1])
+        full_pose[~attention_mask[:len(batch["length"])].flatten()] += self.zero_padding
+        full_pose = full_pose.view(batch['pose_body'].shape[0], -1, full_pose.shape[-1])
+
+        if not self.use_mask:
+            attention_mask = torch.ones_like(attention_mask, dtype=torch.bool)
 
         # get latent
         with torch.no_grad():
-            text_embedding = self.get_text_embedding(texts)
             if self.vae:
                 joint_rot = batch['pose_body'].view(-1, (self.joints_num-1)*3)
                 q_z_sample, dist = self.vae.encode(joint_rot)
@@ -199,9 +236,9 @@ class MDM(LightningModule):
         # loss_dict = self.diffusion.training_losses(self.denoiser, x, t, model_kwargs)
 
         n_set = self._diffusion_process(x, model_kwargs)
-        # loss_mask = attention_mask.unsqueeze(-1).repeat(1, 1, n_set["pred"].shape[-1])
-        diffusion_loss = nn.MSELoss(reduction='sum')(n_set["pred"], n_set["latent"]) / (x.shape[0] * x.shape[1])
-        # diffusion_loss = torch.sum(diffusion_loss * loss_mask) / (torch.sum(lengths) * n_set["pred"].shape[-1])
+        loss_mask = attention_mask.unsqueeze(-1).repeat(1, 1, n_set["pred"].shape[-1])
+        diffusion_loss = nn.MSELoss(reduction='none')(n_set["pred"], n_set["latent"]) 
+        diffusion_loss = torch.sum(diffusion_loss * loss_mask) / torch.sum(lengths)
 
         # reconstruction loss for condition outputs
         x_pred = n_set['pred']
@@ -212,8 +249,16 @@ class MDM(LightningModule):
             pose_body_rec = x_pred
 
         d_orig = torch.cat([full_pose, full_pose[add_index, ...]])
-        rec_loss = self._compute_loss(d_orig, pose_body_rec, attention_mask)
-        # rec_loss, _, _ = self._compute_loss(d_orig, pose_body_rec)
+
+        if self.normalize:
+            d_orig = self.dataset.inv_transform(d_orig)
+            pose_body_rec = self.dataset.inv_transform(pose_body_rec)
+
+        if self.with_root:
+            rec_loss = self._compute_loss(d_orig[..., 3:], pose_body_rec[..., 3:], attention_mask)
+        else:
+            rec_loss = self._compute_loss(d_orig, pose_body_rec, attention_mask)
+        # rec_loss = self._compute_loss(d_orig, pose_body_rec)
         
         loss = 0
         rec_loss['diff_loss'] = diffusion_loss
@@ -227,16 +272,21 @@ class MDM(LightningModule):
         return {'loss': loss}
     
     def validation_step(self, batch, batch_idx):
-        texts = batch["text"] + [self.dataset.text_zero_padding] * len(batch["text"])
+        texts = batch["text"]
         lengths = torch.cat([batch["length"]] * 2)
         max_length = max(lengths)
         
-        # full_pose = torch.cat([batch['pose_root'], batch['pose_body']], dim=-1)
-        full_pose = batch['pose_body']
+        if self.with_root:
+            full_pose = torch.cat([batch['pose_root'], batch['pose_body']], dim=-1)
+        else:
+            full_pose = batch['pose_body']
         
         with torch.no_grad():
             text_embedding = self.get_text_embedding(texts)
+            text_embedding = torch.cat([text_embedding, self.uncondition_embedding.repeat(len(batch["text"]), 1, 1)])
             attention_mask = self.generate_sequence_mask(lengths)
+            if not self.use_mask:
+                attention_mask = torch.ones_like(attention_mask, dtype=torch.bool)
             
             # diffusion
             model_kwargs = dict(y=text_embedding, attention_mask=~attention_mask)
@@ -261,16 +311,29 @@ class MDM(LightningModule):
             else:
                 pose_body_rec = z
             # z_rec_loss = l1_loss(d_rec, d_orig)
-            rec_loss = self._compute_loss(full_pose, pose_body_rec, attention_mask[:len(batch["length"])])
-            # rec_loss, body_rec, bm_orig = self._compute_loss(full_pose, pose_body_rec)
+                
+            if self.normalize:
+                full_pose = self.dataset.inv_transform(full_pose)
+                pose_body_rec = self.dataset.inv_transform(pose_body_rec)
+
+            if self.with_root:
+                rec_loss = self._compute_loss(full_pose[..., 3:], pose_body_rec[..., 3:], attention_mask[:len(batch["length"])])
+            else:
+                rec_loss = self._compute_loss(full_pose, pose_body_rec, attention_mask[:len(batch["length"])])
+            # rec_loss = self._compute_loss(full_pose, pose_body_rec, attention_mask[:len(batch["length"])])
+            # rec_loss = self._compute_loss(full_pose, pose_body_rec)
             # rec_loss.update({'angle_loss': z_rec_loss})
             val_loss = rec_loss['geodesic_loss']
 
-            if batch_idx == 1 and (self.current_epoch+1) % 5 == 0:
-                os.makedirs("./results-v1", exist_ok=True)
-                body_rec = self.dataset.recover_motion(pose_body_rec[0, :batch["length"][0]].cpu())
-                np.save('./results-v1/{}.npy'.format(self.current_epoch), body_rec.v.cpu().numpy())
-                # np.save('./results/{}_origin.npy'.format(self.current_epoch), bm_orig.v[0:batch["length"][0], ..., [0, 2, 1]].cpu().numpy())
+            if batch_idx == 3 and self.current_epoch % 100 == 0:
+                os.makedirs(self.dump_dir, exist_ok=True)
+                body_rec = self.dataset.recover_motion(pose_body_rec[0, :batch["length"][0]].cpu(), local_only=False)
+                body_ori = self.dataset.recover_motion(full_pose[0, :batch["length"][0]].cpu(), local_only=False)
+                np.save(os.path.join(self.dump_dir, '{}.npy'.format(self.current_epoch)), body_rec.v[..., [0,2,1]].cpu().numpy())
+                np.save(os.path.join(self.dump_dir, 'origin.npy'), body_ori.v[..., [0,2,1]].cpu().numpy())
+                f = open(os.path.join(self.dump_dir, 'gt.txt'), 'w')
+                f.write(batch["tokens"][0])
+                f.close()
                 # f = open('./results/{}.txt'.format(self.current_epoch), 'w')
                 # f.write(batch["text"][0])
                 # f.close()
@@ -279,23 +342,6 @@ class MDM(LightningModule):
 
         self.log("val_loss", val_loss, prog_bar=True, logger=True, sync_dist=True)
         return {'val_loss': copy2cpu(val_loss)}
-
-    # def _get_data(self, split_name):
-
-    #     dataset = get_dataset(self.config, split_name)
-
-    #     return DataLoader(dataset,
-    #                       batch_size=self.config.TRAIN.BATCH_SIZE,
-    #                       shuffle=True if 'train' in split_name else False,
-    #                       num_workers=self.config.TRAIN.NUM_WORKERS,
-    #                       collate_fn=mld_collate,
-    #                       pin_memory=True)
-
-    # def train_dataloader(self):
-    #     return self._get_data('train_val')
-    
-    # def val_dataloader(self):
-    #     return self._get_data('val')
 
     def configure_optimizers(self):
         gen_params = [a[1] for a in self.denoiser.named_parameters() if a[1].requires_grad]
@@ -403,5 +449,78 @@ class MDM(LightningModule):
                                               **extra_step_kwargs).prev_sample
 
         return latents
+    
+    def _diffusion_reverse_inpainting(
+        self, 
+        latents_init, 
+        model_kwargs, 
+        inpainting_mask, 
+        strength=1.0,
+        device=None
+    ):
+        if device is None:
+            device = next(self.denoiser.parameters()).device
 
+        latents_init = latents_init.to(device)
+        inpainting_mask = inpainting_mask.to(device)
+
+        # latents = noise if is_strength_max else self.noise_scheduler.add_noise(latents_init, noise, timestep)
+        # latents = latents * self.noise_scheduler.init_noise_sigma if is_strength_max else latents
+
+        self.scheduler.set_timesteps(
+            self.config.scheduler.num_inference_timesteps, device=device)
+        
+        def get_timesteps(self, num_inference_steps, strength):
+            # get the original timestep using init_timestep
+            init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
+
+            t_start = max(num_inference_steps - init_timestep, 0)
+            timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
+
+            return timesteps, num_inference_steps - t_start
+        
+        timesteps, num_inference_steps = get_timesteps(
+            self,
+            num_inference_steps=self.config.scheduler.num_inference_timesteps, 
+            strength=strength
+        )
+
+        latent_timestep = timesteps[:1].repeat(latents_init.shape[0])
+        is_strength_max = strength == 1.0
+
+        # add noise
+        noise = torch.randn_like(latents_init)
+        latents = noise if is_strength_max else self.scheduler.add_noise(latents_init, noise, latent_timestep)
+            # if pure noise then scale the initial latents by the  Scheduler's init sigma
+        latents = latents * self.scheduler.init_noise_sigma if is_strength_max else latents
+
+        # denoising
+        for i, t in enumerate(timesteps):
+            # expand the latents if we are doing classifier free guidance
+            latent_model_input = torch.cat([latents] * 2) 
+            # latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+            # predict the noise residual
+            time = torch.ones((latent_model_input.shape[0],), device=t.device).long() * t
+            noise_pred = self.denoiser(
+                x=latent_model_input,
+                t=time,
+                **model_kwargs
+            )
+            # perform guidance
+            noise_pred_text, noise_pred_uncond = noise_pred.chunk(2)
+            noise_pred = noise_pred_uncond + self.guidance_scale * (
+                noise_pred_text - noise_pred_uncond)
+            latents = self.scheduler.step(noise_pred, t, latents).prev_sample
+
+            init_latents_proper = latents_init
+            if i < len(timesteps) - 1:
+                noise_timestep = timesteps[i + 1]
+                init_latents_proper = self.scheduler.add_noise(
+                    init_latents_proper, noise, torch.tensor([noise_timestep])
+                )
+            latents = (1 - inpainting_mask) * latents + inpainting_mask * init_latents_proper
+        
+        return latents
+
+        
         

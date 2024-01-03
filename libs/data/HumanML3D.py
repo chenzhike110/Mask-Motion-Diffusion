@@ -24,20 +24,46 @@ class HumanML3DDataModule(pl.LightningDataModule):
 
         self.joints_num = 22
 
-        self.mean = np.load(os.path.join(self.data_dir, 'smpl_Mean.npy'))
-        self.std = np.load(os.path.join(self.data_dir, 'smpl_Std_new.npy'))
-        # self.mean = np.zeros(4+3*(self.joints_num-1))
-        # self.std = np.ones(4+3*(self.joints_num-1))
-        # self.mean[:4] = mean[:4]
-        # self.std[:4] = std[:4]
+        self.val = None
+        self.test = None
+        self.train = None
+
+        self.mean = np.load(os.path.join(self.data_dir, 'smpl_6dMean.npy'))
+        self.std = np.load(os.path.join(self.data_dir, 'smpl_6dStd.npy'))
+
+        self.mean[3:] = 0.
+        self.std[3:] = 1.
+
+        self.normalize = config.MODEL.normalize
         self.text_zero_padding = np.load(os.path.join(self.data_dir, 'text_embeddings/-1.npy'))
         self.bodymodel = BodyModel(config.SMPL_PATH)
         self.mean_tensor = torch.from_numpy(self.mean).float()
         self.std_tensor = torch.from_numpy(self.std).float()
 
     def setup(self, stage: str):
-        self.val = HumanML3D(self.data_dir, data_fields='val')
-        self.train = HumanML3D(self.data_dir, data_fields='train_val')
+        self.val = HumanML3D(
+            self.data_dir, 
+            data_fields='val', 
+            mean=self.mean if self.normalize else None,
+            std=self.std if self.normalize else None
+        )
+        self.train = HumanML3D(
+            self.data_dir, 
+            data_fields='train_val',
+            mean=self.mean if self.normalize else None,
+            std=self.std if self.normalize else None
+        )
+
+    def test_dataloader(self):
+        if self.test is None:
+            self.test = HumanML3D(
+                self.data_dir,
+                data_fields='test',
+                mean=self.mean if self.normalize else None,
+                std=self.std if self.normalize else None
+            )
+        return 
+        
 
     def train_dataloader(self):
         return DataLoader(
@@ -98,6 +124,13 @@ class HumanML3DDataModule(pl.LightningDataModule):
                 r_rot_quat =  quaternion_to_axis_angle(r_rot_quat.view(-1, 4))
                 r_pos = r_pos.view(-1, 3)
                 pose_body = data[..., 4:].view(-1, (self.joints_num - 1) * 3)
+            elif data.shape[-1] == (self.joints_num + 1) * 3:
+                pose_body = data.view(-1, self.joints_num * 3)[:, 6:]
+                r_rot_quat = data.view(-1, self.joints_num * 3)[:, 3:6]
+                r_pos = torch.zeros(data.shape[:-1] + (3,)).to(data.device)
+                r_pos[..., :-1] = torch.cumsum(data[..., :2], dim=-2)
+                r_pos[..., -1] = data[..., 2]
+                r_pos = r_pos.view(-1, 3)
             elif data.shape[-1] == (self.joints_num - 1) * 3:
                 pose_body = data.view(-1, (self.joints_num - 1) * 3)
             elif data.shape[-1] == self.joints_num * 3:
@@ -120,6 +153,15 @@ class HumanML3DDataModule(pl.LightningDataModule):
                 r_rot_quat = data[..., :6]
                 pose_body = matrix_to_axis_angle(rotation_6d_to_matrix(pose_body)).view(-1, (self.joints_num - 1) * 3)
                 r_rot_quat = matrix_to_axis_angle(rotation_6d_to_matrix(r_rot_quat)).view(-1, 3)
+            elif data.shape[-1] == self.joints_num * 6 + 3:
+                pose_body = data[..., 9:].reshape(-1, 6)
+                r_rot_quat = data[..., 3:9]
+                pose_body = matrix_to_axis_angle(rotation_6d_to_matrix(pose_body)).view(-1, (self.joints_num - 1) * 3)
+                r_rot_quat = matrix_to_axis_angle(rotation_6d_to_matrix(r_rot_quat)).view(-1, 3)
+                r_pos = torch.zeros(data.shape[:-1] + (3,)).to(data.device)
+                r_pos[..., :-1] = torch.cumsum(data[..., :2], dim=-2)
+                r_pos[..., -1] = data[..., 2]
+                r_pos = r_pos.view(-1, 3)
             else:
                 raise NotImplementedError
             
@@ -175,7 +217,10 @@ class HumanML3D(Dataset):
         for name in tqdm(id_list):
             try:
                 motion = np.load(os.path.join(self.motion_dir, name + '.npz'), allow_pickle=True)
-                motion = np.concatenate((motion['trans'],motion['root_orient']), axis=-1, dtype=np.float32)
+                vel = motion['trans'][1:] - motion['trans'][:-1]
+                vel = np.concatenate([np.zeros((1,3)), vel])
+                vel[:, 2] = motion['trans'][:, 2]
+                motion = np.concatenate((vel, motion['root_orient']), axis=-1, dtype=np.float32)[1:]
                 # trans = np.load(os.path.join(self.trans_dir, name + '.npy'))
                 # vel x,y + height z + aixs angle rotation * joint_num
                 # motion = np.concatenate((trans[:, :4], motion['poses'][:-1, :63]), axis=-1, dtype=np.float32)
@@ -267,8 +312,6 @@ class HumanML3D(Dataset):
         "Z Normalization"
         if self.normalize:
             motion = (motion - self.mean) / self.std
-        else:
-            motion[:, :6] = (motion[:, :6] - self.root_mean) / self.root_std
 
         # padding zero
         # if m_length < self.padding_length:

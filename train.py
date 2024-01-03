@@ -1,13 +1,12 @@
 import os
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
+import torch
 import random
+import shutil
 from libs.config import parse_args, makepath
-from libs.trainer.progress import ProgressLogger
+from libs.models.process import ProgressLogger
 from libs.get_model import get_model_with_config, get_dataset
-from libs.models.utils import make_deterministic
 import lightning as pl
 from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor, RichProgressBar
-from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 from lightning.pytorch import loggers as pl_loggers
 
 def main():
@@ -19,9 +18,11 @@ def main():
     print("set seed: ",cfg.TRAIN.SEED)
     pl.seed_everything(cfg.TRAIN.SEED)
 
+    if os.path.exists(cfg.TRAIN.RESULT_EXP):
+        shutil.rmtree(cfg.TRAIN.RESULT_EXP)
+
     datamodule = get_dataset(cfg)
 
-    early_stop_callback = EarlyStopping(**cfg.TRAIN.early_stopping)
     tb_logger = pl_loggers.TensorBoardLogger(save_dir="logs/{}".format(cfg.NAME))
     metric_monitor = dict(cfg.TRAIN.METRICS)
 
@@ -29,16 +30,15 @@ def main():
         RichProgressBar(),
         ProgressLogger(metric_monitor=metric_monitor),
         LearningRateMonitor(),
-        early_stop_callback,
         ModelCheckpoint(
             dirpath=makepath(os.path.join(cfg.TRAIN.FOLDER_EXP, "checkpoints"), isfile=True),
             filename="{epoch}_{val_loss:.2f}",
             verbose=True,
-            save_top_k=2,
+            save_top_k=-1,
             monitor='val_loss',
             mode='min',
             save_weights_only=True,
-            every_n_epochs=10,
+            every_n_epochs=100,
         ),
     ]
     
@@ -55,7 +55,10 @@ def main():
     )
 
     model = get_model_with_config(cfg, datamodule=datamodule)
-    pltrainer.fit(model)
+    if cfg.TRAIN.resume:
+        print("load ", cfg.MODEL.CHECKPOINT)
+        model.load_state_dict(torch.load(cfg.MODEL.CHECKPOINT)['state_dict'])
+    pltrainer.fit(model, datamodule=datamodule)
 
 if __name__ == "__main__":
     main()
