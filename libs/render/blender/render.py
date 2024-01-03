@@ -30,17 +30,17 @@ def render(npydata, frames_folder, *, mode, faces_path, gt=False,
            exact_frame=None, num=8, downsample=True,
            canonicalize=True, always_on_floor=False, denoising=True,
            oldrender=True,jointstype="mmm", res="high", init=True,
-           accelerator='gpu',device=[0]):
+           accelerator='gpu',device=[0], scene=None):
     if init:
         # Setup the scene (lights / render engine / resolution etc)
-        setup_scene(res=res, denoising=denoising, oldrender=oldrender,accelerator=accelerator,device=device)
+        setup_scene(res=res, denoising=denoising, oldrender=oldrender,accelerator=accelerator,device=device,scene_mesh=scene)
 
     is_mesh = mesh_detect(npydata)
 
     # Put everything in this folder
     if mode == "video":
-        if always_on_floor:
-            frames_folder += "_of"
+        # if always_on_floor:
+        #     frames_folder += "_of"
         os.makedirs(frames_folder, exist_ok=True)
         # if it is a mesh, it is already downsampled
         if downsample and not is_mesh:

@@ -23,8 +23,8 @@ def setup_renderer(denoising=True, oldrender=True, accelerator="gpu", device=[0]
     if denoising:
         bpy.context.scene.cycles.use_denoising = True
 
-    bpy.context.scene.render.tile_x = 256
-    bpy.context.scene.render.tile_y = 256
+    # bpy.context.scene.render.tile_x = 256
+    # bpy.context.scene.render.tile_y = 256
     bpy.context.scene.cycles.samples = 64
     # bpy.context.scene.cycles.denoiser = 'OPTIX'
 
@@ -38,7 +38,7 @@ def setup_renderer(denoising=True, oldrender=True, accelerator="gpu", device=[0]
 
 # Setup scene
 def setup_scene(
-    res="high", denoising=True, oldrender=True, accelerator="gpu", device=[0]
+    res="high", denoising=True, oldrender=True, accelerator="gpu", device=[0], scene_mesh=None
 ):
     scene = bpy.data.scenes["Scene"]
     assert res in ["ultra", "high", "med", "low"]
@@ -87,8 +87,16 @@ def setup_scene(
         proportional_size=1,
         use_proportional_connected=False,
         use_proportional_projected=False,
-    )
+    )  
     bpy.ops.object.select_all(action="DESELECT")
+
+    if scene_mesh:
+        for key in scene_mesh.keys():
+            bpy.ops.wm.obj_import(filepath=scene_mesh[key]['file'])
+            bpy.context.object.scale = [0.001, 0.001, 0.001]
+            bpy.context.object.location = scene_mesh[key]['position']
+            bpy.context.object.rotation_euler = scene_mesh[key]['euler']
+            bpy.ops.object.select_all(action="DESELECT")
 
     setup_renderer(
         denoising=denoising, oldrender=oldrender, accelerator=accelerator, device=device
