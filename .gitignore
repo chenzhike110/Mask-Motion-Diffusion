@@ -176,3 +176,9 @@ saved
 
 # datasets
 datasets/*
+
+# scripts
+*.sh
+
+# demo
+*.npy

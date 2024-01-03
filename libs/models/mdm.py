@@ -1,7 +1,5 @@
 import os
 import torch
-import inspect
-import time
 import numpy as np
 import torch.nn as nn
 from torch import optim as optim_module
@@ -74,7 +72,7 @@ class MDM(LightningModule):
         self.scheduler = instantiate_from_config(config.scheduler)
         self.noise_scheduler = instantiate_from_config(config.noise_scheduler)
         
-        self.guidance_scale = 7.5
+        self.guidance_scale = 2.5
         self.guidance_uncodp = config.TRAIN.guidance_uncodp
 
         # build dataset
@@ -84,18 +82,6 @@ class MDM(LightningModule):
         """
         Generate Text Embedding with tokenizer and embedder
         """
-        # text_inputs = self.tokenizer[0](
-        #     text_embeddings,
-        #     padding="max_length",
-        #     truncation=True,
-        #     max_length=self.tokenizer[0].model_max_length,
-        #     return_tensors="pt"
-        # )
-        # text_input_ids = text_inputs.input_ids
-        # text_embeddings = self.text_embedder[0].get_text_features(
-        #     text_input_ids.cpu()
-        # )
-        # (batch, text_dim) -> (batch, 1, text_dim)
         text_embeddings = torch.from_numpy(np.concatenate(text_embeddings)).float()
         if self.text_proj is not None:
             text_embeddings = self.text_proj(text_embeddings.to(self.text_proj.device))
@@ -361,9 +347,6 @@ class MDM(LightningModule):
             },
         ]
         return [gen_optimizer], schedulers
-    
-    # def on_save_checkpoint(self, checkpoint):
-    #     checkpoint['state_dict'] = self.denoiser.state_dict()
 
     def _diffusion_process(self, latents, model_kwargs):
         """
