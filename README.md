@@ -1,4 +1,4 @@
-# No-name
+# Motion inpainting
 
 ## trajectory following
 
