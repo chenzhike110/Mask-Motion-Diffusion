@@ -1,6 +1,30 @@
 import bpy
+import numpy as np
 from .materials import plane_mat  # noqa
 
+def drawLine(coords):
+    # create the Curve Datablock
+    curveData = bpy.data.curves.new('myCurve', type='CURVE')
+    curveData.dimensions = '3D'
+    curveData.resolution_u = 2
+
+    # map coords to spline
+    polyline = curveData.splines.new('POLY')
+    polyline.points.add(len(coords)-1)
+    for i, coord in enumerate(coords):
+        x,y,z = coord
+        polyline.points[i].co = (x, y, z, 1)
+
+    # create Object
+    curveOB = bpy.data.objects.new('myCurve', curveData)
+    curveData.bevel_depth = 0.01
+
+    material = bpy.data.materials.new('myCurve'+"_material")
+    material.diffuse_color = (1.0,0.0,0.0,1.0)
+    curveData.materials.append(material)
+
+    # attach to scene and validate context
+    bpy.context.collection.objects.link(curveOB)
 
 def setup_renderer(denoising=True, oldrender=True, accelerator="gpu", device=[0]):
     bpy.context.scene.render.engine = "CYCLES"
@@ -92,11 +116,16 @@ def setup_scene(
 
     if scene_mesh:
         for key in scene_mesh.keys():
-            bpy.ops.wm.obj_import(filepath=scene_mesh[key]['file'])
-            bpy.context.object.scale = [0.001, 0.001, 0.001]
-            bpy.context.object.location = scene_mesh[key]['position']
-            bpy.context.object.rotation_euler = scene_mesh[key]['euler']
-            bpy.ops.object.select_all(action="DESELECT")
+            if key == 'Line':
+                line = np.load(scene_mesh[key]['file'])
+                drawLine(line)
+                bpy.ops.object.select_all(action="DESELECT")
+            else:
+                bpy.ops.wm.obj_import(filepath=scene_mesh[key]['file'])
+                bpy.context.object.scale = scene_mesh[key]['scale']
+                bpy.context.object.location = scene_mesh[key]['position']
+                bpy.context.object.rotation_euler = scene_mesh[key]['euler']
+                bpy.ops.object.select_all(action="DESELECT")
 
     setup_renderer(
         denoising=denoising, oldrender=oldrender, accelerator=accelerator, device=device

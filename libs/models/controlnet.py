@@ -3,7 +3,7 @@ import torch.nn as nn
 
 from .utils import conv_nd, zero_module
 
-class controlNet(nn.Module):
+class ControlNet(nn.Module):
     """
     ControlNet for 3D sequence data
     """
@@ -11,6 +11,7 @@ class controlNet(nn.Module):
         self,
         hint_channels,
         model_channels,
+        locations=[],
         dims=2,
     ):
         
@@ -31,3 +32,9 @@ class controlNet(nn.Module):
                 nn.SiLU(),
                 zero_module(conv_nd(dims, 256, model_channels, 3, padding=1))
             )
+        
+        self.zero_module = zero_module(conv_nd(self.dims, model_channels, model_channels, 1, padding=0)))
+        
+    def forward(self, x, hint):
+        hint = self.input_hint_block(hint)
+        

@@ -19,7 +19,7 @@ def main():
 
     with torch.no_grad():
         text_inputs = tokenizer(
-            ["a person walks like a duck."], 
+            ["a person walks forward, then sits on a seat."], 
             padding="max_length",
             truncation=True,
             max_length=tokenizer.model_max_length,
@@ -32,12 +32,21 @@ def main():
 
 
     with torch.no_grad():
-        smpls = model.sample({
+        smpls_ = model.sample({
             "text":[caption], 
             "length":[120]
         }).cpu()
-        smpls = datamodule.recover_motion(smpls, local_only=False)
-        np.save('./demos/samples/duck.npy', smpls.v[..., [0,2,1]].numpy())
+        smpls, pose_body, pose_root, root_trans = datamodule.recover_motion(smpls_, local_only=False, normalized=cfg.MODEL.normalize, return_smpl=True)
+        np.save('./demos/samples/walk_sits.npy', smpls.v.numpy())
+        
+        smpl_dict = {
+            'pose': torch.cat([pose_root, pose_body, torch.zeros(pose_body.shape[0], 6)], dim=-1).numpy(),
+            'trans': root_trans,
+            'latents': smpls_
+        }
+        print(root_trans, pose_root)
+        import joblib
+        joblib.dump(smpl_dict, "demos/samples/walk_sits.pkl")
 
 
 if __name__ == "__main__":

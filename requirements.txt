@@ -1,4 +1,4 @@
-transformers
-torch
-lightning
+# transformers
+# torch
+# lightning
 omegaconf

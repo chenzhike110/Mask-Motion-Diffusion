@@ -1,0 +1,5 @@
+NAME: trace
+
+MESH:
+  Line: 
+    file: assets/sin1.npy

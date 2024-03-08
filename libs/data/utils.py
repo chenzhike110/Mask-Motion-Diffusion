@@ -13,13 +13,6 @@ def collate_tensors(batch):
         sub_tensor.add_(b)
     return canvas
 
-# padding t pose in one batch
-def collate_t_pose(batch):
-    dims = batch[0].dim()
-    max_size = [max([b.size(i) for b in batch]) for i in range(dims)]
-    size = (len(batch), ) + tuple(max_size)
-    canvas = batch[0].new_zeros(size=size)
-
 def mld_collate(batch):
     notnone_batches = [b for b in batch if b is not None]
     notnone_batches.sort(key=lambda x: x[2], reverse=True)
@@ -34,3 +27,12 @@ def mld_collate(batch):
         "tokens": [b[4] for b in notnone_batches],
     }
     return adapted_batch
+
+# trajectory generation
+def generate_sin(length, x_forward, y_width, device):
+    x = torch.linspace(0, -x_forward, length).unsqueeze(-1).to(device)
+    y = torch.sin(x) * y_width
+    pos = torch.cat([x, y, torch.zeros_like(x)], dim=-1)
+
+    orient = torch.atan(torch.cos(x) * y_width)
+    return pos, orient

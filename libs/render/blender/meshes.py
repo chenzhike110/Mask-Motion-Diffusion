@@ -75,10 +75,10 @@ def prepare_meshes(data, canonicalize=True, always_on_floor=False):
     # data[..., 0] = - data[..., 0]
 
     # Swap axis (gravity=Z instead of Y)
-    data = data[..., [2, 0, 1]]
+    # data = data[..., [2, 0, 1]]
 
     # Remove the floor
-    data[..., 2] -= data[..., 2].min()
+    # data[..., 2] -= data[..., 2].min()
 
     # Put all the body on the floor
     if always_on_floor:

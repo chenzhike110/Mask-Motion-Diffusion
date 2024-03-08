@@ -2,6 +2,7 @@ import os
 import torch
 import numpy as np
 import torch.nn as nn
+from tqdm import tqdm
 from torch import optim as optim_module
 from torch.optim import lr_scheduler as lr_sched_module
 from lightning.pytorch import LightningModule
@@ -41,7 +42,6 @@ class MDM(LightningModule):
         # self.class_embedder = LabelEmbedder(config.MODEL.ACTION.num_classes+1, config.MODEL.DENOISER.args.hidden_size, config.MODEL.ACTION.class_dropout_prob)
         
         # condition on text
-
         if config.MODEL.DENOISER.args.hidden_size == config.MODEL.text_embed_dim:
             self.text_proj = None
         else:
@@ -72,7 +72,7 @@ class MDM(LightningModule):
         self.scheduler = instantiate_from_config(config.scheduler)
         self.noise_scheduler = instantiate_from_config(config.noise_scheduler)
         
-        self.guidance_scale = 2.5
+        self.guidance_scale = 7.5
         self.guidance_uncodp = config.TRAIN.guidance_uncodp
 
         # build dataset
@@ -93,8 +93,30 @@ class MDM(LightningModule):
         mask = torch.arange(max_length).expand(len(length), max_length).to(length.device) < (length.unsqueeze(1))
         return mask
     
-    def sample_with_constraints(self, batch, constraint):
-        pass
+    def sample_with_constraints(self, batch, constraint, noise_mask=None, latent_init=None):
+        texts = batch["text"] 
+        text_embedding = self.get_text_embedding(texts)
+        text_embedding = torch.cat([text_embedding, self.uncondition_embedding.repeat(len(batch["text"]), 1, 1)])
+        lengths = torch.tensor(batch["length"] * 2, dtype=torch.int64)
+        max_length = max(lengths)
+        attention_mask = self.generate_sequence_mask(lengths).to(text_embedding.device)
+        model_kwargs = dict(y=text_embedding, attention_mask=~attention_mask)
+
+        z = self._diffusion_reverse_constraints(
+            (len(batch["text"]), max_length, self.denoiser.output_size),
+            model_kwargs,
+            constraint,
+            noise_mask=noise_mask,
+            latent_init=latent_init
+        )
+        # decode
+        if self.vae:
+            z_body = z.view(-1, self.vae.latentD)
+            pose_body_rec = self.vae.decode(z_body)['pose_body'].contiguous().view(len(batch["text"]), -1, (self.joints_num-1)*3)
+        else:
+            pose_body_rec = z
+
+        return pose_body_rec
     
     def inpainting(self, batch, strength=1.0):
         texts = batch["text"] 
@@ -103,6 +125,9 @@ class MDM(LightningModule):
         lengths = torch.tensor(batch["length"] * 2, dtype=torch.int64)
         attention_mask = self.generate_sequence_mask(lengths).to(text_embedding.device)
         model_kwargs = dict(y=text_embedding, attention_mask=~attention_mask)
+
+        if self.normalize:
+            batch["sample"] = (batch["sample"] - self.dataset.mean_tensor) / self.dataset.std_tensor
 
         z = self._diffusion_reverse_inpainting(
             batch["sample"],
@@ -347,6 +372,9 @@ class MDM(LightningModule):
             },
         ]
         return [gen_optimizer], schedulers
+    
+    # def on_save_checkpoint(self, checkpoint):
+    #     checkpoint['state_dict'] = self.denoiser.state_dict()
 
     def _diffusion_process(self, latents, model_kwargs):
         """
@@ -504,6 +532,86 @@ class MDM(LightningModule):
             latents = (1 - inpainting_mask) * latents + inpainting_mask * init_latents_proper
         
         return latents
+    
+    def _diffusion_reverse_constraints(
+        self, 
+        shape, 
+        model_kwargs, 
+        constraint,
+        device=None,
+        noise_mask=None,
+        latent_init=None
+    ):
+        # init latents
+        if device is None:
+            device = next(self.denoiser.parameters()).device
+        
+        if noise_mask is None:
+            noise_mask = torch.zeros(shape, device=device, dtype=torch.bool)
+        else:
+            noise_mask = noise_mask.unsqueeze(0)
+
+        noise = torch.randn(
+            shape,
+            device=device,
+            dtype=torch.float32,
+        )
+            # latents[model_kwargs['attention_mask'].unsqueeze(-1).repeat(1, 1, shape[-1])] = 0
+
+        # scale the initial noise by the standard deviation required by the scheduler
+        latents = noise * self.scheduler.init_noise_sigma
+        # set timesteps
+        self.scheduler.set_timesteps(
+            self.config.scheduler.num_inference_timesteps)
+        timesteps = self.scheduler.timesteps.to(device)
+
+        # reverse
+        best_latent = latents.clone()
+        min_loss = torch.inf
+        bar = tqdm(timesteps)
+        i = 0
+        for t in bar:
+            # predict the noise residual
+            latent_model_input = torch.cat([latents] * 2) 
+            time = torch.ones((latent_model_input.shape[0],), device=t.device).long() * t
+            noise_pred = self.denoiser(
+                x=latent_model_input,
+                t=time,
+                **model_kwargs
+            )
+            # perform condition gradient guidance
+            noise_pred_text, noise_pred_uncond = noise_pred.chunk(2)
+            noise_pred = noise_pred_uncond + self.guidance_scale * (
+                noise_pred_text - noise_pred_uncond)
+            
+            # perform classifier gradient guidance
+            noise_pred.requires_grad_(True)
+            with torch.enable_grad():
+                if self.normalize:
+                    noise_pred_ori = self.dataset.inv_transform(noise_pred)
+                else:
+                    noise_pred_ori = noise_pred
+                loss = constraint(noise_pred_ori)
+                grad = torch.autograd.grad([loss.sum()], [noise_pred])[0]
+                bar.set_postfix({'loss': loss.item(), 'variance': self.scheduler._get_variance(t)})
+                if loss < min_loss:
+                    min_loss = loss
+                    best_latent = noise_pred
+            noise_pred = (noise_pred - 1000. * grad).detach()
+
+            latents = self.scheduler.step(noise_pred, t, latents).prev_sample
+            # latents[noise_mask] = noise_pred[noise_mask]
+            init_latents_proper = latent_init.clone()
+            if latent_init is not None and i < len(timesteps) - 1:
+                noise_timestep = timesteps[i + 1]
+                i += 1
+                init_latents_proper = self.scheduler.add_noise(
+                    latent_init, noise, torch.tensor([noise_timestep])
+                )
+            latents = (1 - noise_mask) * latents + noise_mask * init_latents_proper
+
+        best_latent = (1 - noise_mask) * best_latent + noise_mask * latent_init
+        return best_latent
 
         
         

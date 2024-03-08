@@ -175,10 +175,13 @@ lightning_logs
 saved
 
 # datasets
+data/
 datasets/*
 
 # scripts
 *.sh
 
 # demo
+*.mp4
+demos/
 *.npy

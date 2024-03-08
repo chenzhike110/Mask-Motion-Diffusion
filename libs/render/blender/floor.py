@@ -17,6 +17,8 @@ def plot_floor(data, big_plane=True):
     minx, miny, _ = data.min(axis=(0, 1))
     maxx, maxy, _ = data.max(axis=(0, 1))
     minz = 0
+    
+    minx -= 0.6
 
     location = ((maxx + minx)/2, (maxy + miny)/2, 0)
     # a little bit bigger

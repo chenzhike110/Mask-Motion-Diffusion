@@ -2,7 +2,9 @@ NAME: MDM_MASK
 
 MODEL:
   NAME: MDM
+  normalize: False
   use_mask: True
+  with_root: False
   joints_num: 22
   text_embed_dim: 512
   CHECKPOINT: './saved/MDM/checkpoints/epoch=15_val_loss=0.52.ckpt'
@@ -32,9 +34,9 @@ MODEL:
 TRAIN:
   ACCELERATOR: 'gpu'
   DEVICE: [0, 1]
-  FOLDER_EXP: "./saved/MDM_mask"
+  FOLDER_EXP: "./saved/MDM_mask_root"
   DATASET: HumanML3DDataModule
-  RESULT_EXP: "./results_mask"
+  RESULT_EXP: "./results_mask_root"
   NUM_WORKERS: 16
   BATCH_SIZE: 64
   END_EPOCH: 6000

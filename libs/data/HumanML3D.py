@@ -5,7 +5,7 @@ import numpy as np
 import codecs as cs
 from tqdm import tqdm
 from torch.utils.data import Dataset
-from pytorch3d.transforms.rotation_conversions import (
+from pytorch3d.transforms import (
     rotation_6d_to_matrix,
     matrix_to_axis_angle,
     quaternion_to_axis_angle
@@ -15,6 +15,7 @@ from libs.body_model import BodyModel
 import lightning.pytorch as pl
 from torch.utils.data import DataLoader
 from libs.data.utils import mld_collate
+from libs.render.utils import YZswitch
 
 class HumanML3DDataModule(pl.LightningDataModule):
     def __init__(self, config):
@@ -37,19 +38,8 @@ class HumanML3DDataModule(pl.LightningDataModule):
         self.normalize = config.MODEL.normalize
         self.text_zero_padding = np.load(os.path.join(self.data_dir, 'text_embeddings/-1.npy'))
         self.bodymodel = BodyModel(config.SMPL_PATH)
-
-        try:
-            self.mean = np.load(os.path.join(self.data_dir, 'smpl_Mean.npy'))
-            self.std = np.load(os.path.join(self.data_dir, 'smpl_Std_new.npy'))
-            # self.mean = np.zeros(4+3*(self.joints_num-1))
-            # self.std = np.ones(4+3*(self.joints_num-1))
-            # self.mean[:4] = mean[:4]
-            # self.std[:4] = std[:4]
-            self.text_zero_padding = np.load(os.path.join(self.data_dir, 'text_embeddings/-1.npy'))
-            self.mean_tensor = torch.from_numpy(self.mean).float()
-            self.std_tensor = torch.from_numpy(self.std).float()
-        except:
-            pass
+        self.mean_tensor = torch.from_numpy(self.mean).float()
+        self.std_tensor = torch.from_numpy(self.std).float()
 
     def setup(self, stage: str):
         self.val = HumanML3D(
@@ -120,7 +110,7 @@ class HumanML3DDataModule(pl.LightningDataModule):
         r_pos[..., 1] = data[..., 3]
         return r_rot_quat, r_pos
 
-    def recover_motion(self, data, rotation='6d', normalized=False, local_only=True):
+    def recover_motion(self, data, rotation='6d', normalized=False, local_only=True, return_smpl=False):
         # data (batch, seq, 4+21*6/21*3)
         if len(data.shape) == 2:
             data = data.unsqueeze(0)
@@ -181,12 +171,17 @@ class HumanML3DDataModule(pl.LightningDataModule):
         
         if local_only:
             r_pos = r_rot_quat = None
+        # else:
+        #     r_rot_quat, r_pos = YZswitch(root_rot=r_rot_quat, root_trans=r_pos)
 
         bm = self.bodymodel(
             pose_body=pose_body, 
             root_orient=r_rot_quat,
             trans=r_pos
         )
+
+        if return_smpl:
+            return bm, pose_body, r_rot_quat, r_pos
         
         return bm
 

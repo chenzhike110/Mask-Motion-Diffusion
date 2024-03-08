@@ -80,9 +80,6 @@ def render(npydata, frames_folder, *, mode, faces_path, gt=False,
     # Number of frames possible to render
     nframes = len(data)
 
-    # Show the trajectory
-    show_traj(data.trajectory)
-
     # Create a floor
     plot_floor(data.data, big_plane=False)
 

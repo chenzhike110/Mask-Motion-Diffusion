@@ -5,15 +5,17 @@ from scipy import signal
 from transformers import AutoModel, AutoTokenizer
 from libs.config import parse_args
 from libs.get_model import get_model_with_config, get_dataset
+from libs.data.utils import generate_sin
 from pytorch3d.transforms import matrix_to_rotation_6d, euler_angles_to_matrix, axis_angle_to_matrix
 
 device = torch.device('cpu')
 
-def generate_sitcrying(length=50, guassian_range=21):
+def generate_sitcrying(length=50, guassian_range=35):
     """
     sit crying inpainting
     """
-    weights = signal.windows.gaussian(guassian_range, std=10.)
+    weights = signal.windows.gaussian(guassian_range, std=3.)
+    weights[guassian_range//2:] = 1.0
     with open("demos/pose_estimation/sit_crying.pkl", 'rb') as f:
         data = pickle.load(f)
     poses = torch.from_numpy(data['thetas'][None, :22*3])
@@ -29,8 +31,8 @@ def generate_sitcrying(length=50, guassian_range=21):
         euler_angles_to_matrix(torch.tensor([[torch.pi/2., -torch.pi/4., 0.]]), 'XYZ')
     )
 
-    # inpainting_mask[:guassian_range] = torch.from_numpy(weights)
-    # sample[:, :guassian_range] = poses
+    inpainting_mask[:guassian_range] = torch.from_numpy(weights)
+    sample[:, :guassian_range] = poses
 
     inpainting_mask[-guassian_range:] = torch.from_numpy(weights)
     sample[:, -guassian_range:] = poses
@@ -88,26 +90,49 @@ def generate_taiji(cutin=3, length=120, guassian_range=31):
     
     return text, sample, inpainting_mask, save_name
 
-def generate_pelvis(length=120, x_forward=torch.pi*3., y_width=1.0):
-    x = torch.linspace(0, -x_forward, length).unsqueeze(-1)
-    y = torch.sin(x) * y_width
-    pos = torch.cat([x, y, torch.zeros_like(x)], dim=-1)
+def generate_pelvis(length=120, x_forward=torch.pi*2., y_width=1.0):
+    pos, orient = generate_sin(length, x_forward, y_width)
     vel = pos[1:] - pos[:-1]
     vel = torch.cat([torch.zeros(1, 3), vel]).unsqueeze(0)
 
-    text = ["a person runs."]
+    text = ["a person is walking."]
     sample = torch.tensor([1., 0., 0., 0., 1., 0.]).reshape(1, 1, 6).repeat(1, length, 22)
+
+    root_orient = torch.tensor([[torch.pi/2., -torch.pi/2., 0.]]).repeat(length, 1)
+    root_orient[:, 1:2] += orient
+
     sample[:, :, :6] = matrix_to_rotation_6d(
-        euler_angles_to_matrix(torch.tensor([[torch.pi/2., -torch.pi/2., 0.]]), 'XYZ')
+        euler_angles_to_matrix(root_orient, 'XYZ')
     )
     sample = torch.cat([vel, sample], dim=-1)
 
     # cutin_index = torch.linspace(0, length-guassian_range-1, cutin).long()
 
     inpainting_mask = torch.zeros_like(sample)
-    inpainting_mask[:, torch.linspace(0, length-1, 7).long(), :2] = 0.8
-    inpainting_mask[:, 0, 3:9] = 1.0
-    inpainting_mask[:, -1, 3:9] = 1.0
+    # inpainting_mask[:, torch.linspace(0, length-1, 7).long(), :2] = 0.8
+    inpainting_mask[:, :, :2] = 1.0
+    save_name = 'demos/samples/walk_follow.npy'
+    return text, sample, inpainting_mask, save_name
+
+def generate_line(length=120, x_forward=4.):
+    x = torch.linspace(0, -x_forward, length).unsqueeze(-1).to(device)
+    pos = torch.cat([x, torch.zeros_like(x), torch.zeros_like(x)], dim=-1)
+    vel = pos[1:] - pos[:-1]
+    vel = torch.cat([torch.zeros(1, 3), vel]).unsqueeze(0)
+
+    text = ["a person is walking"]
+    sample = torch.tensor([1., 0., 0., 0., 1., 0.]).reshape(1, 1, 6).repeat(1, length, 22)
+
+    root_orient = torch.tensor([[torch.pi/2., -torch.pi/2., 0.]]).repeat(length, 1)
+
+    sample[:, :, :6] = matrix_to_rotation_6d(
+        euler_angles_to_matrix(root_orient, 'XYZ')
+    )
+    sample = torch.cat([vel, sample], dim=-1)
+
+    inpainting_mask = torch.zeros_like(sample)
+    inpainting_mask[:, :, :2] = 1.0
+    inpainting_mask[:, :, 4:10] = 1.0
     save_name = 'demos/samples/walk_follow.npy'
     return text, sample, inpainting_mask, save_name
 
@@ -125,8 +150,8 @@ def main():
 
     length = 50
     # text, sample, inpainting_mask, save_name = generate_taiji(length=length)
-    # text, sample, inpainting_mask, save_name = generate_pelvis(length)
-    text, sample, inpainting_mask, save_name = generate_sitcrying(length)
+    text, sample, inpainting_mask, save_name = generate_line(length)
+    # text, sample, inpainting_mask, save_name = generate_sitcrying(length)
 
     with torch.no_grad():
         text_inputs = tokenizer(
@@ -141,7 +166,7 @@ def main():
             text_input_ids.to(text_encoder.device)
         ).cpu().numpy()
 
-        smpls = model.inpainting({
+        smpls_ = model.inpainting({
             "text":[caption], 
             "length":[length],
             "sample":sample,
@@ -149,8 +174,17 @@ def main():
         }).cpu()
         # smpls = sample
         # smpls = smpls[~inpainting_mask.bool()]
-        smpls = datamodule.recover_motion(smpls, local_only=False)
+        smpls, pose_body, pose_root, root_trans = datamodule.recover_motion(smpls_, local_only=False, normalized=cfg.MODEL.normalize, return_smpl=True)
         np.save(save_name, smpls.v[..., [0,2,1]].numpy())
+
+        smpl_dict = {
+            'pose': torch.cat([pose_root, pose_body, torch.zeros(pose_body.shape[0], 6)], dim=-1).numpy(),
+            'trans': root_trans,
+            'latents': smpls_
+        }
+        import joblib
+        joblib.dump(smpl_dict, "demos/samples/edit_initial.pkl")
+        
 
 if __name__ == '__main__':
     main()
