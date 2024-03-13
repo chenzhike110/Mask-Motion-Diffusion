@@ -1,3 +1,2 @@
-from .vposer import VPoser
-from .denoiser import Denoiser
 from .mdm import MDM
+from .transformer import TransformerEncoder

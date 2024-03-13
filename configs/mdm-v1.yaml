@@ -1,0 +1,59 @@
+name: motion_diffusion
+
+model: MDM
+normalize: False
+text_encoder: 'embedding'
+
+dataset: HumanML3D
+
+denoiser:
+  target: libs.models.TransformerEncoder
+  params:
+    num_heads: 4
+    num_layers: 8
+    ff_size: 1024
+    dropout: 0.1
+    latent_dim: 512
+    input_size: 135
+    output_size: 135
+
+scheduler:
+  target: diffusers.DPMSolverMultistepScheduler
+  num_inference_timesteps: 30
+  guidance_scale: 1.0
+  params:
+    num_train_timesteps: 1000
+    beta_start: 0.00085
+    beta_end: 0.012
+    variance_type: 'fixed_small'
+    beta_schedule: 'scaled_linear'
+    prediction_type: 'sample'
+
+train:
+  cond_drop_prob: 0.1
+  warm_up_iter: 5000
+  accelerate: 'gpu'
+  saved: 'saved/motion_diffusion'
+  device: [0]
+  num_workers: 8
+  batch_size: 64
+  end_epoch: 6000
+  val_frequency: 5
+  optimizer:
+    target: AdamW
+    params:
+      lr: 1e-4
+      weight_decay: 1e-5
+  lr_scheduler:
+    target: ReduceLROnPlateau
+    params:
+      verbose: true
+      factor: 0.8
+      patience: 250
+      eps: 1e-5
+  loss:
+    diff_loss: 1.0
+    # v2v: 0.1
+    # j2j: 0.1
+    pos_loss: 1.0
+    geodesic_loss: 1.0

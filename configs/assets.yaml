@@ -1,8 +1,7 @@
-SMPL_PATH: './deps/body_models/smplh/neutral/model.npz'
-DATASETS:
-  AMASS: './datasets/AMASS'
-  HumanML3D: './datasets/HumanML3D'
+smpl_path: '/home/czk/Desktop/SMPL/SMPLH_NEUTRAL.pkl'
+datasets:
+  AMASS: './data/AMASS'
+  HumanML3D: './data/HumanML'
 HANDRAIL: 'assets/handrail/StraightHandRailllNoTex.obj'
 CHAIR: 'assets/chair/APezzi1.obj'
 CHAIRBALCK: 'assets/chairblack/chairblack_center.obj'
-  

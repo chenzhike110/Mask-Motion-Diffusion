@@ -34,7 +34,7 @@ def parse_arg(self, args=None, namespace=None):
 setattr(ArgumentParser, 'parse_args_bak', ArgumentParser.parse_args)
 setattr(ArgumentParser, 'parse_args', parse_arg)
 
-from libs.config import parse_args
+from libs.tools.config import parse_args
 from libs.render.blender import render
 from libs.render.video import Video
 

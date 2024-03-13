@@ -170,6 +170,7 @@ deps/*
 
 # log
 lightning_logs
+wandb
 
 # checkpoints
 saved
@@ -179,6 +180,7 @@ data/
 datasets/*
 
 # scripts
+scripts
 *.sh
 
 # demo

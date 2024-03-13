@@ -1,7 +1,0 @@
-NAME: scene1
-
-MESH:
-  CHAIR: 
-    position: [0, 0, 0.45]
-    euler: [1.5708, 0., 0.]
-    scale: [0.001, 0.001, 0.001]

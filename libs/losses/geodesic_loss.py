@@ -63,7 +63,7 @@ class geodesic_loss_R(nn.Module):
         m = torch.bmm(m1, m2.transpose(1, 2))  # batch*3*3
 
         traces = m.diagonal(dim1=-2, dim2=-1).sum(-1)
-        dists = torch.acos(torch.clamp((traces - 1) / 2, -1 + self.eps, 1 - self.eps))
+        dists = torch.abs(torch.acos(torch.clamp((traces - 1) / 2, -1 + self.eps, 1 - self.eps)))
         return dists
 
     def forward(self, ypred, ytrue):

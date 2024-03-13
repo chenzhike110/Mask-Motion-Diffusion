@@ -34,7 +34,6 @@ def render(npydata, frames_folder, *, mode, faces_path, gt=False,
     if init:
         # Setup the scene (lights / render engine / resolution etc)
         setup_scene(res=res, denoising=denoising, oldrender=oldrender,accelerator=accelerator,device=device,scene_mesh=scene)
-
     is_mesh = mesh_detect(npydata)
 
     # Put everything in this folder
@@ -79,6 +78,7 @@ def render(npydata, frames_folder, *, mode, faces_path, gt=False,
 
     # Number of frames possible to render
     nframes = len(data)
+    print('total frames: ', nframes)
 
     # Create a floor
     plot_floor(data.data, big_plane=False)
@@ -93,8 +93,8 @@ def render(npydata, frames_folder, *, mode, faces_path, gt=False,
     nframes_to_render = len(frameidx)
 
     # center the camera to the middle
-    if mode == "sequence":
-        camera.update(data.get_mean_root())
+    # if mode == "sequence":
+    camera.update(data.get_mean_root())
 
     imported_obj_names = []
     for index, frameidx in enumerate(frameidx):
@@ -103,7 +103,7 @@ def render(npydata, frames_folder, *, mode, faces_path, gt=False,
             mat = data.get_sequence_mat(frac)
         else:
             mat = data.mat
-            camera.update(data.get_root(frameidx))
+        #     camera.update(data.get_root(frameidx))
 
         islast = index == (nframes_to_render-1)
 

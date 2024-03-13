@@ -1,7 +1,0 @@
-NAME: handrail
-
-MESH:
-  HANDRAIL: 
-    position: [0.5, -2, 0.4]
-    euler: [1.57, 0., 1.57]
-    scale: [1., 1., 1.]

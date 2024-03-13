@@ -3,31 +3,25 @@ import torch
 import numpy as np
 import codecs as cs
 from tqdm import tqdm
-from transformers import AutoModel, AutoTokenizer
+import clip
 
-text_encoder = AutoModel.from_pretrained('./deps/clip-vit-base-patch16').cuda()
-tokenizer = AutoTokenizer.from_pretrained('./deps/clip-vit-base-patch16')
+device = torch.device("cuda")
 
-dump_dir = "datasets/HumanML3D/text_embeddings"
+clip_model, clip_preprocess = clip.load('ViT-B/32', device='cuda', jit=False)
+clip.model.convert_weights(clip_model) 
+clip_model.eval()
+
+dump_dir = "./data/HumanML/text_embeddings"
 
 with torch.no_grad():
-    text_inputs = tokenizer(
-        [""],
-        padding="max_length",
-        truncation=True,
-        max_length=tokenizer.model_max_length,
-        return_tensors="pt"
-    )
-    text_input_ids = text_inputs.input_ids
-    caption = text_encoder.get_text_features(
-        text_input_ids.to(text_encoder.device)
-    ).cpu().numpy()
+    text = clip.tokenize([''], truncate=True).to(device)
+    feat_clip_text = clip_model.encode_text(text).float().cpu()
 
-np.save(os.path.join(dump_dir, "-1.npy"), caption)
+torch.save(feat_clip_text, os.path.join(dump_dir, "-1.pt"))
 
 id_list = []
-text_dir = "datasets/HumanML3D/texts/"
-with cs.open(os.path.join("datasets/HumanML3D/all.txt"), 'r') as f:
+text_dir = "data/HumanML/texts/"
+with cs.open(os.path.join("data/HumanML/all.txt"), 'r') as f:
     for line in tqdm(f.readlines()):
         with cs.open(os.path.join(text_dir, line.strip() + '.txt')) as fd:
             captions = []
@@ -35,16 +29,7 @@ with cs.open(os.path.join("datasets/HumanML3D/all.txt"), 'r') as f:
                 line_split = line1.strip().split('#')
                 caption = line_split[0]
                 captions.append(caption)
-            text_inputs = tokenizer(
-                captions,
-                padding="max_length",
-                truncation=True,
-                max_length=tokenizer.model_max_length,
-                return_tensors="pt"
-            )
-            text_input_ids = text_inputs.input_ids
+            text_inputs = text = clip.tokenize(captions, truncate=True).to(device)
             with torch.no_grad():
-                captions = text_encoder.get_text_features(
-                    text_input_ids.to(text_encoder.device)
-                ).cpu().numpy()
-            np.save(os.path.join(dump_dir, line.strip() + '.npy'), captions)
+                captions = clip_model.encode_text(text_inputs).float().cpu()
+            torch.save(captions, os.path.join(dump_dir, line.strip() + '.pt'))

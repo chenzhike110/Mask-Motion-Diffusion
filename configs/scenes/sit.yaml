@@ -1,7 +1,0 @@
-NAME: scene1
-
-MESH:
-  CHAIRBALCK: 
-    position: [-2.9692,  1.9521,  0.4500]
-    euler: [1.57, 0., 1.4886]
-    scale: [1, 1, 1]

@@ -1,54 +1,40 @@
+import clip
 import torch
 import numpy as np
-from transformers import AutoModel, AutoTokenizer
-from libs.config import parse_args
-from libs.get_model import get_model_with_config, get_dataset
 
-device = torch.device('cuda:1')
+from libs.smplx import SMPLHLayer
+from libs.tools.config import parse_args
+from libs.tools.parse import get_model
 
-def main():
-    cfg = parse_args()
-    datamodule = get_dataset(cfg)
-    model = get_model_with_config(cfg, datamodule)
-    model.load_state_dict(torch.load(cfg.MODEL.CHECKPOINT)['state_dict'])
-    model = model.to(device)
-    model.eval()
+device = torch.device("cpu")
+clip_model, clip_preprocess = clip.load('ViT-B/32', device=device, jit=False)
+clip.model.convert_weights(clip_model) 
+clip_model.eval()
 
-    text_encoder = AutoModel.from_pretrained('./deps/clip-vit-base-patch16').to(device)
-    tokenizer = AutoTokenizer.from_pretrained('./deps/clip-vit-base-patch16')
+def text_sample(model, length: list, texts: list):
+    
+    feat_clip_text = [clip_model.encode_text(clip.tokenize(texts, truncate=True).to(device)).float().cpu()]
 
-    with torch.no_grad():
-        text_inputs = tokenizer(
-            ["a person walks forward, then sits on a seat."], 
-            padding="max_length",
-            truncation=True,
-            max_length=tokenizer.model_max_length,
-            return_tensors="pt"
-        )
-        text_input_ids = text_inputs.input_ids
-        caption = text_encoder.get_text_features(
-            text_input_ids.to(text_encoder.device)
-        ).cpu().numpy()
+    sample = model.sample({"text": feat_clip_text, "length": length})
+    sample = torch.from_numpy(np.load('data/HumanML/joints/M000000.npy')).to(device)
+    sample = model.recover_motion(sample)
+    return sample
 
+def trajectory_sample(model, trajectory: list, texts: list):
 
-    with torch.no_grad():
-        smpls_ = model.sample({
-            "text":[caption], 
-            "length":[120]
-        }).cpu()
-        smpls, pose_body, pose_root, root_trans = datamodule.recover_motion(smpls_, local_only=False, normalized=cfg.MODEL.normalize, return_smpl=True)
-        np.save('./demos/samples/walk_sits.npy', smpls.v.numpy())
-        
-        smpl_dict = {
-            'pose': torch.cat([pose_root, pose_body, torch.zeros(pose_body.shape[0], 6)], dim=-1).numpy(),
-            'trans': root_trans,
-            'latents': smpls_
-        }
-        print(root_trans, pose_root)
-        import joblib
-        joblib.dump(smpl_dict, "demos/samples/walk_sits.pkl")
+    trajectory = torch.tensor(trajectory, dtype=torch.float32).to(device)
+    feat_clip_text = [clip_model.encode_text(clip.tokenize(texts, truncate=True)).float().cpu()]
 
 
 if __name__ == "__main__":
-    main()
+    cfg = parse_args()
+    cfg.load_checkpoint = True
+    cfg.checkpoint = 'saved/motion_diffusion/checkpoints/epoch=4299_val_loss=1.32.ckpt'
+    model = get_model(cfg)
+    model.body_model = SMPLHLayer(model_path=cfg.smpl_path)
+    model = model.to(device)
 
+    length = [50]
+    texts = ['a person is walking in place at a slow pace']
+    sample = text_sample(model, texts=texts, length=length)
+    np.save('./demos/walk_in_place.npy', sample.vertices.cpu().numpy())

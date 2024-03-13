@@ -1,16 +1,16 @@
 NAME: '___render_do_not_need_name__' # Experiment name
-ACCELERATOR: 'gpu' # Devices optioncal: “cpu”, “gpu”, “tpu”, “ipu”, “hpu”, “mps, “auto”
-DEVICE: [0,1] # Index of gpus eg. [0] or [0,1,2,3]
+ACCELERATOR: 'cpu' # Devices optioncal: “cpu”, “gpu”, “tpu”, “ipu”, “hpu”, “mps, “auto”
+DEVICE: [0] # Index of gpus eg. [0] or [0,1,2,3]
 
 RENDER:
   RES: 'high'
   DOWNSAMPLE: False
   FPS: 20.0
   CANONICALIZE: True
-  ALWAYS_ON_FLOOR: True
+  ALWAYS_ON_FLOOR: False
   OLDRENDER: true
   GT: false
   EXACT_FRAME: 0.5
   NUM: 8
   VID_EXT: 'mp4'
-  FACES_PATH: './deps/body_models/smplh.faces'
+  FACES_PATH: '/home/czk/Desktop/SMPL/smplh.faces'
