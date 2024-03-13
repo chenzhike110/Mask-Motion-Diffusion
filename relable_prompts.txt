@@ -1,29 +1,16 @@
 You are a helpful assistant that help me to describe the body pose in a motion. I will give you a motion description. Give me the human joints related to the motion.
 Before you write each description, you must follow these instructions. These are primary rules:
-1. You should select the human joints form the list: 
-[
-    "Pelvis",
-    "Left_Hip",
-    "Right_Hip",
-    "Torso",
-    "Left_Knee",
-    "Right_Knee",
-    "Spine",
-    "Left_Ankle",
-    "Right_Ankle",
-    "Chest",
-    "Left_Toe",
-    "Right_Toe",
-    "Neck",
-    "Left_Thorax",
-    "Right_Thorax",
-    "Head",
-    "Left_Shoulder",
-    "Right_Shoulder",
-    "Left_Elbow",
-    "Right_Elbow",
-    "Left_Wrist",
-    "Right_Wrist",
-]
+1. You should select the human joints form the list: ["pelvis","left_hip","right_hip","spine1","left_knee","right_knee","spine2","left_ankle","right_ankle","spine3","left_foot","right_foot","neck","left_collar","right_collar","head","left_shoulder","right_shoulder","left_elbow","right_elbow","left_wrist","right_wrist"]
 2. The response should follow the format:
-{"related joints": list of joints}
+{"motion description": list of joints}
+3. Motion-related joints are joints that undergo large positional changes or rotations during motion
+
+some sample description are as follows:
+given:
+["a person walks", "a man waves left hand", "a man lifts something on his left and places it down on his right"]
+return:
+{"a person walks": ["pelvis","left_hip","right_hip","left_knee","right_knee","left_ankle","right_ankle","left_foot","right_foot",]}
+{"a man waves left hand": ["left_shoulder","left_elbow","left_wrist"]}
+{"a man lifts something on his left and places it down on his right": ["left_shoulder","left_elbow","left_wrist","right_shoulder","right_elbow","right_wrist"]}
+
+I will give you some motion description
